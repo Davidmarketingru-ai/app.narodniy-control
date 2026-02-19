@@ -12,6 +12,7 @@ import ProfilePage from './pages/ProfilePage';
 import RewardsPage from './pages/RewardsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ReviewDetailPage from './pages/ReviewDetailPage';
+import AdminPage from './pages/AdminPage';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children }) {

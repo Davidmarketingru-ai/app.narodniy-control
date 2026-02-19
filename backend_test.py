@@ -402,6 +402,15 @@ def main():
     tester.test_profile_endpoints()
     tester.test_points_endpoints()
     
+    # NEW FEATURES TESTING (6 enhancement features)
+    tester.test_upload_endpoints()           # Feature 1: File upload
+    tester.test_pwa_manifest()              # Feature 2: PWA manifest  
+    tester.test_admin_endpoints()           # Feature 3: Admin panel
+    tester.test_rating_endpoints()          # Feature 4: Rating system
+    tester.test_review_expiry()             # Feature 5: Review expiry
+    tester.test_referral_endpoints()        # Feature 6: Referral system
+    tester.test_non_admin_blocked()         # Security: Non-admin blocked
+    
     # Print final results
     print(f"\n{'='*50}")
     print(f"📊 FINAL RESULTS")

@@ -734,11 +734,23 @@ async def seed_data():
     await db.reviews.create_index("review_id", unique=True)
     await db.reviews.create_index("org_id")
     await db.reviews.create_index("user_id")
+    await db.reviews.create_index([("status", 1), ("expires_at", 1)])
     await db.users.create_index("user_id", unique=True)
     await db.users.create_index("email", unique=True)
+    await db.users.create_index("referral_code", unique=True, sparse=True)
     await db.user_sessions.create_index("session_token", unique=True)
     await db.notifications.create_index("user_id")
     await db.verifications.create_index("review_id")
+
+    # Ensure existing test users have referral_code and role
+    await db.users.update_many(
+        {"referral_code": {"$exists": False}},
+        {"$set": {"referral_code": uuid.uuid4().hex[:8].upper(), "role": "user", "referred_by": None}}
+    )
+
+    # Start background task for expiring reviews
+    asyncio.create_task(expire_reviews_task())
+    logger.info("Review expiry background task started")
 
 # ==================== Health ====================
 @api_router.get("/")

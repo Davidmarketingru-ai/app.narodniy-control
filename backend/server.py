@@ -27,6 +27,35 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Uploads directory
+UPLOADS_DIR = ROOT_DIR / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
+
+# ==================== Rating Statuses ====================
+RATING_STATUSES = [
+    {"name": "Новичок", "min_points": 0, "icon": "seedling", "color": "#6b7280"},
+    {"name": "Наблюдатель", "min_points": 50, "icon": "eye", "color": "#3b82f6"},
+    {"name": "Контролёр", "min_points": 150, "icon": "shield", "color": "#8b5cf6"},
+    {"name": "Инспектор", "min_points": 350, "icon": "shield-check", "color": "#10b981"},
+    {"name": "Эксперт", "min_points": 700, "icon": "award", "color": "#eab308"},
+    {"name": "Мастер", "min_points": 1500, "icon": "crown", "color": "#f97316"},
+    {"name": "Легенда", "min_points": 3000, "icon": "star", "color": "#ef4444"},
+]
+
+def get_user_status(points: int) -> dict:
+    status = RATING_STATUSES[0]
+    for s in RATING_STATUSES:
+        if points >= s["min_points"]:
+            status = s
+    idx = RATING_STATUSES.index(status)
+    next_status = RATING_STATUSES[idx + 1] if idx < len(RATING_STATUSES) - 1 else None
+    return {
+        "current": status,
+        "level": idx + 1,
+        "next": next_status,
+        "progress": ((points - status["min_points"]) / (next_status["min_points"] - status["min_points"]) * 100) if next_status else 100,
+    }
+
 # ==================== Models ====================
 class UserOut(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -39,6 +68,9 @@ class UserOut(BaseModel):
     is_verified: bool = False
     theme: str = "dark"
     text_scale: int = 1
+    referral_code: Optional[str] = None
+    referred_by: Optional[str] = None
+    role: str = "user"
     created_at: Optional[str] = None
 
 class OrganizationOut(BaseModel):

@@ -1,0 +1,134 @@
+{
+  "project_name": "Народный Контроль (People's Control)",
+  "design_philosophy": {
+    "identity": "Civic Tactical",
+    "core_values": ["Authority", "Trust", "Action", "Transparency"],
+    "archetype": "Swiss High-Contrast + Performance Pro",
+    "vibe": "A digital command center for citizens. Serious, clean, high-contrast, verified.",
+    "theme_strategy": "Hybrid",
+    "default_theme": "dark",
+    "accessibility_focus": "High contrast text, clear touch targets, age-inclusive (18-60+)"
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Manrope, sans-serif",
+      "body": "Inter, sans-serif",
+      "data": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-4xl md:text-5xl font-bold tracking-tight",
+      "h2": "text-3xl font-semibold tracking-tight",
+      "h3": "text-2xl font-semibold",
+      "body_lg": "text-lg leading-relaxed",
+      "body_base": "text-base leading-relaxed",
+      "caption": "text-sm text-muted-foreground uppercase tracking-wider"
+    },
+    "rules": [
+      "Headings MUST use Manrope. It conveys modern authority and supports Cyrillic perfectly.",
+      "Data points (points, dates, coordinates) MUST use JetBrains Mono.",
+      "Body text uses Inter for maximum legibility across all ages.",
+      "Use 'tracking-tight' on all headings larger than 24px."
+    ]
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "DEFAULT": "#0f172a",
+        "foreground": "#f8fafc"
+      },
+      "brand": {
+        "red": "#ef4444",
+        "blue": "#3b82f6",
+        "green": "#10b981",
+        "gold": "#eab308"
+      },
+      "semantic": {
+        "alert": "#ef4444",
+        "verified": "#10b981",
+        "civic": "#3b82f6",
+        "shop": "#eab308"
+      },
+      "background": {
+        "dark": "#0a0a0a",
+        "light": "#ffffff",
+        "glass_dark": "rgba(10, 10, 10, 0.7)",
+        "glass_light": "rgba(255, 255, 255, 0.7)"
+      }
+    },
+    "usage_rules": [
+      "Backgrounds are deep slate/black (#0a0a0a), NOT gray.",
+      "Cards use glassmorphism: bg-background/60 backdrop-blur-xl border-white/10.",
+      "Status indicators (Red/Green) must be vibrant neon in dark mode.",
+      "NEVER use gradients for text. Keep it legible.",
+      "Primary Action Button: White text on Blue (#3b82f6) or Red (#ef4444) depending on context (Verify vs Report)."
+    ]
+  },
+  "components": {
+    "cards": {
+      "style": "Glassmorphism",
+      "classes": "bg-card/50 backdrop-blur-md border border-border/50 rounded-xl shadow-sm hover:border-primary/50 transition-colors",
+      "padding": "p-6"
+    },
+    "buttons": {
+      "primary": "bg-primary text-primary-foreground hover:bg-primary/90 rounded-lg font-medium px-6 py-3 shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-all",
+      "destructive": "bg-red-600 text-white hover:bg-red-700 rounded-lg shadow-[0_0_15px_rgba(239,68,68,0.3)]",
+      "outline": "border border-input bg-transparent hover:bg-accent hover:text-accent-foreground rounded-lg"
+    },
+    "inputs": {
+      "style": "Flat with bottom border focus or filled subtle",
+      "classes": "bg-secondary/50 border-transparent focus:border-primary focus:ring-0 rounded-lg h-12"
+    },
+    "navigation": {
+      "sidebar": "Fixed left, glassmorphism, icon-heavy.",
+      "bottom_nav": "Mobile only, sticky bottom, glassmorphism."
+    },
+    "maps": {
+      "library": "Leaflet (react-leaflet)",
+      "style_dark": ".leaflet-layer { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); } .leaflet-container { background: #000; }",
+      "markers": "Custom HTML markers using div icons with pulsing CSS animations."
+    }
+  },
+  "layout_strategies": {
+    "dashboard": "Bento Grid (Grid cols 1 md:cols-3 gap-4)",
+    "feed": "Masonry or Single Column Stream with large images",
+    "map_view": "Full screen map with floating overlay cards",
+    "container": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "spacing": "Generous padding (py-12) to separate content sections."
+  },
+  "visual_enhancers": {
+    "glassmorphism": "Use heavily for overlays on maps and images.",
+    "gradients": "Subtle radial gradients in background to spotlight active areas (e.g. behind the 'Create Review' button).",
+    "borders": "1px borders with 10% opacity white (dark mode) or 10% black (light mode).",
+    "shadows": "Colored shadows for buttons (e.g. blue button glows blue)."
+  },
+  "image_urls": {
+    "logo": "https://cdn-icons-png.flaticon.com/512/9630/9630444.png",
+    "placeholders": {
+      "grocery_store": "https://images.unsplash.com/photo-1760463921697-6ab2c0caca20?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "expired_product": "https://images.unsplash.com/photo-1576186726183-9bd8aa9fa6d9?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "street_issue": "https://images.unsplash.com/photo-1709934730506-fba12664d4e4?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "rewards_coffee": "https://images.pexels.com/photos/2072160/pexels-photo-2072160.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "user_avatar_1": "https://images.unsplash.com/photo-1638861270389-fda4dd25ddfb?crop=entropy&cs=srgb&fm=jpg&q=85",
+      "user_avatar_2": "https://images.pexels.com/photos/3893702/pexels-photo-3893702.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "user_avatar_3": "https://images.unsplash.com/photo-1702369412530-0a4ab9980f9e?crop=entropy&cs=srgb&fm=jpg&q=85"
+    }
+  },
+  "instructions_to_main_agent": [
+    "INSTALL: framer-motion leaflet react-leaflet",
+    "SETUP: Add Manrope font from Google Fonts (import in index.css).",
+    "SETUP: Configure Tailwind colors to match the palette.",
+    "MAP: Implement the dark mode CSS filter for Leaflet tiles in index.css.",
+    "LAYOUT: Use the 'Bento Grid' strategy for the Home Dashboard.",
+    "INTERACTION: Use framer-motion for smooth page transitions and list entrance animations.",
+    "ACCESSIBILITY: Ensure text scaling works (use rem units).",
+    "LANGUAGE: All text MUST be in Russian.",
+    "COMPONENTS: Customize Shadcn components to remove the default radius if it conflicts with the 'Tactical' look (prefer rounded-lg or rounded-md).",
+    "THEME: Default to DARK mode but allow toggle."
+  ],
+  "UNIVERSAL_GUIDELINES": {
+    "avoid_slop": "Do not use generic gray borders. Use colored low-opacity borders.",
+    "animations": "Add hover states to EVERYTHING interactive. Use scale-105 or color shifts.",
+    "spacing": "Use p-6 or p-8 for cards. Don't crowd the text.",
+    "z_index": "Ensure map controls (z-[1000]) are always above the map tiles but below modals."
+  }
+}

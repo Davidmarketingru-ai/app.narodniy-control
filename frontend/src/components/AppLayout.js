@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home, Map, PlusCircle, Bell, User, Award, Shield,
-  Menu, X, LogOut, Star
+  Menu, X, LogOut, Star, ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationsApi } from '../lib/api';
@@ -16,6 +16,8 @@ const navItems = [
   { to: '/notifications', label: 'Уведомления', icon: Bell },
   { to: '/profile', label: 'Профиль', icon: User },
 ];
+
+const adminNavItem = { to: '/admin', label: 'Админ', icon: ShieldAlert };
 
 export default function AppLayout({ children }) {
   const { user } = useAuth();

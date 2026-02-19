@@ -289,7 +289,7 @@ async def get_review(review_id: str):
         raise HTTPException(status_code=404, detail="Review not found")
     return ReviewOut(**review)
 
-@api_router.post("/reviews", response_model=ReviewOut)
+@api_router.post("/reviews", response_model=ReviewOut, status_code=201)
 async def create_review(request: Request, review: ReviewCreate):
     user = await require_user(request)
     org = await db.organizations.find_one({"org_id": review.org_id}, {"_id": 0})

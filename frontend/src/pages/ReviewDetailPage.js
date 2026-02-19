@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Star, Clock, CheckCircle2, XCircle, MapPin, ArrowLeft, 
-  ShieldCheck, Send, Loader2, User
+  ShieldCheck, Send, Loader2, User, Timer
 } from 'lucide-react';
 import { reviewsApi, verificationsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +12,7 @@ const statusConfig = {
   approved: { label: 'Верифицирован', color: 'text-emerald-400', bg: 'bg-emerald-500/10', icon: CheckCircle2 },
   pending: { label: 'Ожидает подтверждения', color: 'text-yellow-400', bg: 'bg-yellow-500/10', icon: Clock },
   rejected: { label: 'Отклонён', color: 'text-red-400', bg: 'bg-red-500/10', icon: XCircle },
+  expired: { label: 'Истёк (24ч)', color: 'text-gray-400', bg: 'bg-gray-500/10', icon: Timer },
 };
 
 export default function ReviewDetailPage() {

@@ -2,20 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
-  MapPin, Camera, Star, Send, Loader2, ChevronDown, X, AlertCircle
+  MapPin, Camera, Star, Send, Loader2, ChevronDown, X, AlertCircle, Upload
 } from 'lucide-react';
-import { reviewsApi, organizationsApi } from '../lib/api';
+import { reviewsApi, organizationsApi, uploadApi } from '../lib/api';
 
 export default function CreateReviewPage() {
   const navigate = useNavigate();
   const [orgs, setOrgs] = useState([]);
   const [selectedOrg, setSelectedOrg] = useState(null);
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
+  const [orgSearch, setOrgSearch] = useState('');
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
-  const [photos, setPhotos] = useState([]);
+  const [photos, setPhotos] = useState([]); // [{url, preview, uploading}]
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -23,18 +24,43 @@ export default function CreateReviewPage() {
     organizationsApi.list().then(setOrgs).catch(console.error);
   }, []);
 
-  const handlePhotoAdd = () => {
-    if (photos.length >= 3) return;
-    const placeholders = [
-      'https://images.unsplash.com/photo-1576186726183-9bd8aa9fa6d9?w=400',
-      'https://images.unsplash.com/photo-1760463921697-6ab2c0caca20?w=400',
-      'https://images.unsplash.com/photo-1709934730506-fba12664d4e4?w=400',
-    ];
-    setPhotos([...photos, placeholders[photos.length]]);
+  const filteredOrgs = orgs.filter(o =>
+    !orgSearch || o.name.toLowerCase().includes(orgSearch.toLowerCase()) || o.address.toLowerCase().includes(orgSearch.toLowerCase())
+  );
+
+  const handleFileSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (photos.length + files.length > 5) {
+      setError('Максимум 5 фото');
+      return;
+    }
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        setError('Файл слишком большой (макс. 10 МБ)');
+        continue;
+      }
+      const preview = URL.createObjectURL(file);
+      const idx = photos.length;
+      setPhotos(prev => [...prev, { url: '', preview, uploading: true, file }]);
+      try {
+        const result = await uploadApi.upload(file);
+        setPhotos(prev => prev.map((p, i) =>
+          p.preview === preview ? { ...p, url: result.url, uploading: false } : p
+        ));
+      } catch (err) {
+        setPhotos(prev => prev.filter(p => p.preview !== preview));
+        setError('Ошибка загрузки файла');
+      }
+    }
+    e.target.value = '';
   };
 
   const removePhoto = (index) => {
-    setPhotos(photos.filter((_, i) => i !== index));
+    setPhotos(prev => {
+      const p = prev[index];
+      if (p?.preview) URL.revokeObjectURL(p.preview);
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -44,15 +70,17 @@ export default function CreateReviewPage() {
     if (!title.trim()) { setError('Введите заголовок'); return; }
     if (!content.trim()) { setError('Введите описание'); return; }
     if (rating === 0) { setError('Поставьте оценку'); return; }
+    if (photos.some(p => p.uploading)) { setError('Дождитесь загрузки фото'); return; }
 
     setSubmitting(true);
     try {
+      const photoUrls = photos.map(p => p.url).filter(Boolean);
       const review = await reviewsApi.create({
         org_id: selectedOrg.org_id,
         title,
         content,
         rating,
-        photos,
+        photos: photoUrls,
         latitude: selectedOrg.latitude,
         longitude: selectedOrg.longitude,
       });
@@ -103,11 +131,22 @@ export default function CreateReviewPage() {
               </button>
               {showOrgDropdown && (
                 <div className="absolute top-full left-0 right-0 mt-1 glass rounded-xl overflow-hidden z-50 max-h-60 overflow-y-auto">
-                  {orgs.map(org => (
+                  <div className="p-2 border-b border-border/50">
+                    <input
+                      type="text"
+                      value={orgSearch}
+                      onChange={e => setOrgSearch(e.target.value)}
+                      placeholder="Поиск..."
+                      data-testid="org-search-input"
+                      className="w-full bg-secondary/50 rounded-lg h-9 px-3 text-sm text-foreground placeholder:text-muted-foreground outline-none"
+                      autoFocus
+                    />
+                  </div>
+                  {filteredOrgs.map(org => (
                     <button
                       key={org.org_id}
                       type="button"
-                      onClick={() => { setSelectedOrg(org); setShowOrgDropdown(false); }}
+                      onClick={() => { setSelectedOrg(org); setShowOrgDropdown(false); setOrgSearch(''); }}
                       className="w-full p-3 text-left hover:bg-primary/10 transition-colors flex items-center gap-3"
                     >
                       <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -117,6 +156,9 @@ export default function CreateReviewPage() {
                       </div>
                     </button>
                   ))}
+                  {filteredOrgs.length === 0 && (
+                    <p className="p-3 text-sm text-muted-foreground text-center">Не найдено</p>
+                  )}
                 </div>
               )}
             </div>
@@ -167,13 +209,18 @@ export default function CreateReviewPage() {
             </div>
           </div>
 
-          {/* Photos */}
+          {/* Photos - Real Upload */}
           <div>
-            <label className="text-sm font-medium text-foreground mb-2 block">Фотографии ({photos.length}/3)</label>
+            <label className="text-sm font-medium text-foreground mb-2 block">Фотографии ({photos.length}/5)</label>
             <div className="flex flex-wrap gap-3">
               {photos.map((photo, i) => (
-                <div key={i} className="relative w-24 h-24 rounded-lg overflow-hidden group">
-                  <img src={photo} alt="" className="w-full h-full object-cover" />
+                <div key={i} className="relative w-24 h-24 rounded-lg overflow-hidden group border border-border/50">
+                  <img src={photo.preview || photo.url} alt="" className="w-full h-full object-cover" />
+                  {photo.uploading && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Loader2 className="w-5 h-5 animate-spin text-white" />
+                    </div>
+                  )}
                   <button
                     type="button"
                     onClick={() => removePhoto(i)}
@@ -183,18 +230,24 @@ export default function CreateReviewPage() {
                   </button>
                 </div>
               ))}
-              {photos.length < 3 && (
-                <button
-                  type="button"
-                  onClick={handlePhotoAdd}
+              {photos.length < 5 && (
+                <label
                   data-testid="add-photo-btn"
-                  className="w-24 h-24 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-1 hover:border-primary/50 transition-colors"
+                  className="w-24 h-24 rounded-lg border-2 border-dashed border-muted-foreground/30 flex flex-col items-center justify-center gap-1 hover:border-primary/50 transition-colors cursor-pointer"
                 >
-                  <Camera className="w-5 h-5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Фото</span>
-                </button>
+                  <Upload className="w-5 h-5 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Загрузить</span>
+                  <input
+                    type="file"
+                    accept="image/*,video/*"
+                    multiple
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                </label>
               )}
             </div>
+            <p className="text-xs text-muted-foreground mt-2">Поддерживаются: JPG, PNG, WebP, GIF, MP4 (до 10 МБ)</p>
           </div>
 
           {/* Submit */}

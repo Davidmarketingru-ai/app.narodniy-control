@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { 
   Star, Clock, CheckCircle2, XCircle, ChevronRight, 
-  TrendingUp, Award, Plus, MapPin, ArrowRight
+  TrendingUp, Award, Plus, MapPin, ArrowRight, Timer
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { reviewsApi } from '../lib/api';
@@ -12,6 +12,7 @@ const statusConfig = {
   approved: { label: 'Верифицирован', color: 'text-emerald-400', bg: 'bg-emerald-500/10', glow: 'glow-green', icon: CheckCircle2 },
   pending: { label: 'Ожидает', color: 'text-yellow-400', bg: 'bg-yellow-500/10', glow: 'glow-yellow', icon: Clock },
   rejected: { label: 'Отклонён', color: 'text-red-400', bg: 'bg-red-500/10', glow: 'glow-red', icon: XCircle },
+  expired: { label: 'Истёк', color: 'text-gray-400', bg: 'bg-gray-500/10', glow: '', icon: Timer },
 };
 
 function ReviewCard({ review, index }) {

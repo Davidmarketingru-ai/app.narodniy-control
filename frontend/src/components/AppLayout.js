@@ -49,7 +49,7 @@ export default function AppLayout({ children }) {
           </div>
 
           <nav className="space-y-1">
-            {navItems.map(item => (
+            {[...navItems, ...(user?.role === 'admin' ? [adminNavItem] : [])].map(item => (
               <NavLink
                 key={item.to}
                 to={item.to}

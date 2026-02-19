@@ -45,4 +45,31 @@ export const profileApi = {
   update: (data) => api.put('/profile', data).then(r => r.data),
 };
 
+export const uploadApi = {
+  upload: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data);
+  },
+};
+
+export const ratingApi = {
+  status: () => api.get('/rating/status').then(r => r.data),
+  leaderboard: () => api.get('/rating/leaderboard').then(r => r.data),
+};
+
+export const referralApi = {
+  apply: (code) => api.post('/referral/apply', { code }).then(r => r.data),
+  stats: () => api.get('/referral/stats').then(r => r.data),
+};
+
+export const adminApi = {
+  reviews: (status) => api.get('/admin/reviews', { params: status ? { status } : {} }).then(r => r.data),
+  approveReview: (id) => api.put(`/admin/reviews/${id}/approve`).then(r => r.data),
+  rejectReview: (id, reason) => api.put(`/admin/reviews/${id}/reject`, { reason }).then(r => r.data),
+  stats: () => api.get('/admin/stats').then(r => r.data),
+  users: () => api.get('/admin/users').then(r => r.data),
+  setRole: (userId, role) => api.put(`/admin/users/${userId}/role`, { role }).then(r => r.data),
+};
+
 export default api;

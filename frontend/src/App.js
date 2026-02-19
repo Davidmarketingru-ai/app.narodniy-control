@@ -57,6 +57,7 @@ function AppRouter() {
       <Route path="/rewards" element={<ProtectedRoute><RewardsPage /></ProtectedRoute>} />
       <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
       <Route path="/reviews/:reviewId" element={<ProtectedRoute><ReviewDetailPage /></ProtectedRoute>} />
+      <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

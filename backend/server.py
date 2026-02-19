@@ -478,6 +478,206 @@ async def redeem_reward(request: Request, reward_id: str):
     await create_notification(user["user_id"], "reward_redeemed", "Награда получена!", f"Вы обменяли {reward['price']} баллов на \"{reward['name']}\"")
     return {"success": True, "message": f"Награда \"{reward['name']}\" получена!"}
 
+# ==================== File Upload ====================
+@api_router.post("/upload")
+async def upload_file(request: Request, file: UploadFile = File(...)):
+    await require_user(request)
+    ext = Path(file.filename).suffix.lower() if file.filename else ".jpg"
+    allowed = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".mov", ".avi"}
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+    file_id = f"{uuid.uuid4().hex}{ext}"
+    file_path = UPLOADS_DIR / file_id
+    with open(file_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+    file_url = f"/api/uploads/{file_id}"
+    return {"url": file_url, "filename": file_id}
+
+@api_router.get("/uploads/{filename}")
+async def get_upload(filename: str):
+    from fastapi.responses import FileResponse
+    file_path = UPLOADS_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    media_types = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".gif": "image/gif", ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime"}
+    ext = Path(filename).suffix.lower()
+    return FileResponse(file_path, media_type=media_types.get(ext, "application/octet-stream"))
+
+# ==================== Rating Status ====================
+@api_router.get("/rating/status")
+async def get_rating_status(request: Request):
+    user = await require_user(request)
+    points = user.get("points", 0)
+    status = get_user_status(points)
+    reviews_count = await db.reviews.count_documents({"user_id": user["user_id"]})
+    verifications_count = await db.verifications.count_documents({"user_id": user["user_id"]})
+    return {
+        **status,
+        "points": points,
+        "reviews_count": reviews_count,
+        "verifications_count": verifications_count,
+        "all_statuses": RATING_STATUSES,
+    }
+
+@api_router.get("/rating/leaderboard")
+async def get_leaderboard():
+    users = await db.users.find({}, {"_id": 0, "user_id": 1, "name": 1, "picture": 1, "points": 1}).sort("points", -1).to_list(20)
+    result = []
+    for i, u in enumerate(users):
+        status = get_user_status(u.get("points", 0))
+        result.append({
+            "rank": i + 1,
+            "user_id": u["user_id"],
+            "name": u.get("name", "Аноним"),
+            "picture": u.get("picture", ""),
+            "points": u.get("points", 0),
+            "status": status["current"],
+            "level": status["level"],
+        })
+    return result
+
+# ==================== Referral System ====================
+@api_router.post("/referral/apply")
+async def apply_referral(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    code = body.get("code", "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="Код не указан")
+    if user.get("referred_by"):
+        raise HTTPException(status_code=400, detail="Вы уже применили реферальный код")
+    if user.get("referral_code") == code:
+        raise HTTPException(status_code=400, detail="Нельзя использовать свой собственный код")
+    referrer = await db.users.find_one({"referral_code": code}, {"_id": 0})
+    if not referrer:
+        raise HTTPException(status_code=404, detail="Реферальный код не найден")
+    # Give bonus to both
+    bonus_referrer = 50
+    bonus_referred = 25
+    await db.users.update_one({"user_id": referrer["user_id"]}, {"$inc": {"points": bonus_referrer}})
+    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": bonus_referred}, "$set": {"referred_by": referrer["user_id"]}})
+    # Points history
+    now_str = datetime.now(timezone.utc).isoformat()
+    await db.points_history.insert_one({"history_id": f"ph_{uuid.uuid4().hex[:12]}", "user_id": referrer["user_id"], "amount": bonus_referrer, "reason": f"Реферальный бонус: {user.get('name', 'Пользователь')} зарегистрировался по вашему коду", "created_at": now_str})
+    await db.points_history.insert_one({"history_id": f"ph_{uuid.uuid4().hex[:12]}", "user_id": user["user_id"], "amount": bonus_referred, "reason": f"Бонус за регистрацию по реферальному коду", "created_at": now_str})
+    await create_notification(referrer["user_id"], "referral_bonus", "Реферальный бонус!", f'{user.get("name", "Пользователь")} зарегистрировался по вашему коду. +{bonus_referrer} баллов!')
+    await create_notification(user["user_id"], "referral_bonus", "Бонус за реферала!", f'Вы получили {bonus_referred} баллов за использование реферального кода')
+    return {"success": True, "bonus": bonus_referred, "message": f"Код активирован! +{bonus_referred} баллов"}
+
+@api_router.get("/referral/stats")
+async def get_referral_stats(request: Request):
+    user = await require_user(request)
+    referred_count = await db.users.count_documents({"referred_by": user["user_id"]})
+    return {
+        "referral_code": user.get("referral_code", ""),
+        "referred_count": referred_count,
+        "total_bonus": referred_count * 50,
+    }
+
+# ==================== Admin Routes ====================
+async def require_admin(request: Request) -> dict:
+    user = await require_user(request)
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return user
+
+@api_router.get("/admin/reviews")
+async def admin_list_reviews(request: Request, status: Optional[str] = None):
+    await require_admin(request)
+    query = {}
+    if status:
+        query["status"] = status
+    reviews = await db.reviews.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return reviews
+
+@api_router.put("/admin/reviews/{review_id}/approve")
+async def admin_approve_review(request: Request, review_id: str):
+    await require_admin(request)
+    review = await db.reviews.find_one({"review_id": review_id}, {"_id": 0})
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    await db.reviews.update_one({"review_id": review_id}, {"$set": {"status": "approved"}})
+    points = 10
+    await db.users.update_one({"user_id": review["user_id"]}, {"$inc": {"points": points}})
+    await db.reviews.update_one({"review_id": review_id}, {"$set": {"points_awarded": points}})
+    await create_notification(review["user_id"], "review_verified", "Отзыв одобрен модератором!", f'Ваш отзыв "{review["title"]}" одобрен. +{points} баллов', review_id)
+    return {"success": True}
+
+@api_router.put("/admin/reviews/{review_id}/reject")
+async def admin_reject_review(request: Request, review_id: str):
+    await require_admin(request)
+    body = await request.json()
+    reason = body.get("reason", "Не соответствует правилам")
+    review = await db.reviews.find_one({"review_id": review_id}, {"_id": 0})
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    await db.reviews.update_one({"review_id": review_id}, {"$set": {"status": "rejected"}})
+    await create_notification(review["user_id"], "review_rejected", "Отзыв отклонён", f'Ваш отзыв "{review["title"]}" отклонён. Причина: {reason}', review_id)
+    return {"success": True}
+
+@api_router.get("/admin/stats")
+async def admin_stats(request: Request):
+    await require_admin(request)
+    total_users = await db.users.count_documents({})
+    total_reviews = await db.reviews.count_documents({})
+    pending_reviews = await db.reviews.count_documents({"status": "pending"})
+    approved_reviews = await db.reviews.count_documents({"status": "approved"})
+    rejected_reviews = await db.reviews.count_documents({"status": "rejected"})
+    expired_reviews = await db.reviews.count_documents({"status": "expired"})
+    total_orgs = await db.organizations.count_documents({})
+    total_verifications = await db.verifications.count_documents({})
+    return {
+        "total_users": total_users,
+        "total_reviews": total_reviews,
+        "pending_reviews": pending_reviews,
+        "approved_reviews": approved_reviews,
+        "rejected_reviews": rejected_reviews,
+        "expired_reviews": expired_reviews,
+        "total_organizations": total_orgs,
+        "total_verifications": total_verifications,
+    }
+
+@api_router.put("/admin/users/{user_id}/role")
+async def admin_set_role(request: Request, user_id: str):
+    await require_admin(request)
+    body = await request.json()
+    role = body.get("role", "user")
+    if role not in ["user", "admin"]:
+        raise HTTPException(status_code=400, detail="Invalid role")
+    await db.users.update_one({"user_id": user_id}, {"$set": {"role": role}})
+    return {"success": True}
+
+@api_router.get("/admin/users")
+async def admin_list_users(request: Request):
+    await require_admin(request)
+    users = await db.users.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return users
+
+# ==================== Review Expiry Background Task ====================
+async def expire_reviews_task():
+    """Background task that marks expired pending reviews"""
+    while True:
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            expired = await db.reviews.find(
+                {"status": "pending", "expires_at": {"$lt": now}}, {"_id": 0}
+            ).to_list(100)
+            for review in expired:
+                await db.reviews.update_one(
+                    {"review_id": review["review_id"]},
+                    {"$set": {"status": "expired"}}
+                )
+                await create_notification(
+                    review["user_id"], "review_expired",
+                    "Отзыв истёк",
+                    f'Ваш отзыв "{review["title"]}" не получил 2 подтверждения за 24 часа и был отклонён.',
+                    review["review_id"]
+                )
+                logger.info(f"Expired review {review['review_id']}")
+        except Exception as e:
+            logger.error(f"Error in expire_reviews_task: {e}")
+        await asyncio.sleep(300)  # Check every 5 minutes
+
 # ==================== Seed Data ====================
 @app.on_event("startup")
 async def seed_data():

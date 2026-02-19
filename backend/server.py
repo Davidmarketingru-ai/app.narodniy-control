@@ -221,6 +221,7 @@ async def auth_session(request: Request, response: Response):
         await db.users.update_one({"email": email}, {"$set": {"name": name, "picture": picture, "last_signed_in": datetime.now(timezone.utc).isoformat()}})
     else:
         user_id = f"user_{uuid.uuid4().hex[:12]}"
+        referral_code = uuid.uuid4().hex[:8].upper()
         await db.users.insert_one({
             "user_id": user_id,
             "email": email,
@@ -231,6 +232,9 @@ async def auth_session(request: Request, response: Response):
             "is_verified": False,
             "theme": "dark",
             "text_scale": 1,
+            "referral_code": referral_code,
+            "referred_by": None,
+            "role": "user",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "last_signed_in": datetime.now(timezone.utc).isoformat()
         })

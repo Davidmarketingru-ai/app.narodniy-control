@@ -17,11 +17,6 @@ import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
-  const location = useLocation();
-
-  if (location.state?.user) {
-    return <AppLayout>{children}</AppLayout>;
-  }
 
   if (loading) {
     return (

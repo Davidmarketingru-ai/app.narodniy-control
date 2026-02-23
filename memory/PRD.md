@@ -1,57 +1,94 @@
-# PRD - Народный Контроль (People's Control)
+# Народный Контроль — Product Requirements Document
 
 ## Original Problem Statement
-Rebuild uploaded React Native/Expo mobile app "Народный Контроль" as web application (FastAPI + React + MongoDB). All modules, Google Auth, Leaflet maps, modern design. Enhance with all recommended improvements.
+Rebuild a React Native application "Народный Контроль" (People's Control) into a modern full-stack web application using Python (FastAPI), React, and MongoDB. The platform enables civic engagement through verified community reviews, news feeds, problem mapping, and eventually a hierarchical People's Councils system.
 
-## Architecture
-- **Frontend**: React 19 + Tailwind CSS + Framer Motion + Leaflet/react-leaflet
-- **Backend**: FastAPI (Python) + MongoDB (Motor async driver)
-- **Auth**: Emergent Google OAuth (session-based with httpOnly cookies, SameSite=lax)
-- **Database**: MongoDB
-- **Maps**: Leaflet/OpenStreetMap with dark mode filter
-- **PWA**: manifest.json + service worker
-- **File Storage**: Server-side /uploads directory with API serving
+## Core Architecture
+- **Frontend:** React.js + Tailwind CSS + Shadcn/UI + Leaflet + Framer Motion
+- **Backend:** FastAPI + Motor (async MongoDB) + Pydantic
+- **Database:** MongoDB
+- **Auth:** Emergent-managed Google OAuth (custom callback flow)
+- **Fonts:** Manrope + JetBrains Mono
 
 ## What's Been Implemented
 
-### Phase 1 - MVP (Feb 19, 2026)
-- Full FastAPI REST API with 20+ endpoints
-- Emergent Google OAuth integration
-- MongoDB with seeded data
-- 8 pages: Login, Dashboard, Create Review, Map, Profile, Rewards, Notifications, Review Detail
-- Leaflet map with color-coded category markers
-- Dark "Civic Tactical" design
+### Phase 1 — Core (Complete)
+- Google Auth with session management
+- User profiles with points/rating system (7 tiers: Новичок → Легенда)
+- Organizations CRUD with map display (Leaflet)
+- Review lifecycle: create → verify (2 confirmations) → approve/expire
+- Admin panel: review moderation, user management, stats
+- Notifications system
+- Rewards/shop with age-group targeting
+- Referral program (+50/+25 points)
+- File uploads (images/video)
+- PWA support
+- Rating leaderboard
 
-### Phase 2 - Enhancements (Feb 19, 2026)
-1. Real Photo/Video Upload
-2. PWA Manifest + Service Worker
-3. Admin Moderation Panel (3 tabs)
-4. Rating System (7 Statuses)
-5. Automatic Review Expiry (24h timer)
-6. Referral System
+### Phase 2 — Feature Expansion (Complete — Feb 23, 2026)
+- **News Feed** (`/news`): Multi-level (yard→world) news with categories, likes, comments, urgency flag, create form
+- **Info Widgets** (`/widgets`): Weather (open-meteo), Currency rates (CBR), Magnetic storms (NOAA), UV index, Location search
+- **Problems Map** (`/problems-map`): Leaflet map with color-coded markers by status, filters, linked to reviews
+- **Identity Verification** (`/verification`): Phone (SMS code), Passport (hashed), Bank ID (Sber/Tinkoff/VTB/Alfa), Yandex ID — 3 verification levels (basic → confirmed → verified)
 
-### Phase 3 - Auth Bug Fix (Feb 23, 2026)
-**Problem**: After Google 2FA, user was redirected back to login page
-**Root causes fixed**:
-1. CORS: Infrastructure (K8s ingress) overrides `allow-origin:*`, conflicting with `credentials:true` — fixed by setting explicit CORS_ORIGINS in .env
-2. Cookie: `SameSite=none` changed to `SameSite=lax` for same-origin compatibility
-3. AuthCallback: Changed from React Router `navigate()` to `window.location.href` hard redirect for reliability — ensures page reloads with cookie
-4. Added detailed backend logging for auth flow debugging
-5. Improved error handling in AuthCallback with user-friendly error display
+## API Endpoints
+### Auth
+- POST `/api/auth/session` — Google auth callback
+- GET `/api/auth/me` — Current user
+- POST `/api/auth/logout`
 
-## Testing Status
-- Phase 1: Backend 95%, Frontend 100%
-- Phase 2: Backend 97.1%, Frontend 100%
-- Phase 3: Auth flow 100% (infrastructure tested, real Google OAuth requires manual testing)
+### Content
+- GET/POST `/api/reviews`, GET `/api/reviews/{id}`
+- POST `/api/verifications`, GET `/api/verifications/{review_id}`
+- GET/POST `/api/organizations`, GET `/api/organizations/{id}`
+- GET/POST `/api/news`, GET `/api/news/{id}`, POST `/api/news/{id}/like`
+- GET/POST `/api/news/{id}/comments`
+
+### Widgets
+- GET `/api/widgets/weather?lat=&lon=`
+- GET `/api/widgets/currency`
+- GET `/api/widgets/magnetic`
+- GET `/api/widgets/locations?q=`
+
+### Map
+- GET `/api/map/problems`
+
+### User
+- GET/PUT `/api/profile`
+- GET `/api/rating/status`, GET `/api/rating/leaderboard`
+- POST `/api/referral/apply`, GET `/api/referral/stats`
+- GET `/api/verification/status`, POST `/api/verification/phone`, etc.
+
+### Admin
+- GET `/api/admin/reviews`, PUT `/api/admin/reviews/{id}/approve|reject`
+- GET `/api/admin/stats`, GET `/api/admin/users`
 
 ## Prioritized Backlog
-### P1
-- [ ] Leaderboard page (frontend)
-- [ ] Organization management by owners
-- [ ] Push notifications
-- [ ] Review search and filtering
 
-### P2
-- [ ] Capacitor wrapping for native mobile apps
-- [ ] Advanced analytics dashboard
-- [ ] Gamification: achievements and badges
+### P0 — System of People's Councils
+Hierarchical council system (Yard → District → City → Republic → Country) with:
+- Discussion forums
+- Voting mechanisms
+- Budget management
+- Member approval workflows
+
+### P1 — Reviews for Public Sector
+- Extend reviews to government services (hospitals, schools, police)
+- Rate individual officials
+
+### P1 — Statistics Dashboard
+- Public analytics: city/district ratings, solved vs unsolved problems
+- Individual contribution tracking
+
+### P2 — Future Features
+- AI-powered problem classification and routing
+- Petitions system with escalation
+- SOS emergency button
+- Business features (QR codes, verified accounts)
+- Multi-language support, accessibility, offline mode
+
+## Technical Notes
+- Auth flow uses non-standard Google OAuth callback (workaround for CORS)
+- `server.py` is a monolith — refactoring into APIRouter modules recommended
+- Widget APIs use free tiers (open-meteo, CBR, NOAA) — designed for easy replacement
+- Seed data exists for organizations, reviews, news

@@ -246,10 +246,11 @@ async def auth_session(request: Request, response: Response):
     })
     response.set_cookie(
         key="session_token", value=session_token,
-        httponly=True, secure=True, samesite="none",
+        httponly=True, secure=True, samesite="lax",
         path="/", max_age=7*24*60*60
     )
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    logger.info(f"Auth session created for user {user_id} ({email})")
     return user
 
 @api_router.get("/auth/me")

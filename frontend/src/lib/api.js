@@ -72,4 +72,33 @@ export const adminApi = {
   setRole: (userId, role) => api.put(`/admin/users/${userId}/role`, { role }).then(r => r.data),
 };
 
+export const verificationApi = {
+  status: () => api.get('/verification/status').then(r => r.data),
+  sendPhoneCode: (phone) => api.post('/verification/phone', { phone }).then(r => r.data),
+  confirmPhone: (code) => api.post('/verification/phone/confirm', { code }).then(r => r.data),
+  verifyPassport: (data) => api.post('/verification/passport', data).then(r => r.data),
+  verifyBankId: (bank) => api.post('/verification/bank-id', { bank }).then(r => r.data),
+  verifyYandexId: () => api.post('/verification/yandex-id').then(r => r.data),
+};
+
+export const newsApi = {
+  list: (params) => api.get('/news', { params }).then(r => r.data),
+  get: (id) => api.get(`/news/${id}`).then(r => r.data),
+  create: (data) => api.post('/news', data).then(r => r.data),
+  like: (id) => api.post(`/news/${id}/like`).then(r => r.data),
+  comments: (id) => api.get(`/news/${id}/comments`).then(r => r.data),
+  addComment: (id, text) => api.post(`/news/${id}/comments`, { text }).then(r => r.data),
+};
+
+export const widgetsApi = {
+  weather: (lat, lon) => api.get('/widgets/weather', { params: { lat, lon } }).then(r => r.data),
+  currency: () => api.get('/widgets/currency').then(r => r.data),
+  magnetic: () => api.get('/widgets/magnetic').then(r => r.data),
+  searchLocations: (q) => api.get('/widgets/locations', { params: { q } }).then(r => r.data),
+};
+
+export const mapApi = {
+  problems: () => api.get('/map/problems').then(r => r.data),
+};
+
 export default api;

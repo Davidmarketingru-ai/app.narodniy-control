@@ -1001,6 +1001,34 @@ async def seed_data():
     await db.user_sessions.create_index("session_token", unique=True)
     await db.notifications.create_index("user_id")
     await db.verifications.create_index("review_id")
+    await db.news.create_index([("level", 1), ("created_at", -1)])
+    await db.news.create_index("article_id", unique=True)
+    await db.news_comments.create_index("article_id")
+
+    # Seed news
+    news_count = await db.news.count_documents({})
+    if news_count == 0:
+        logger.info("Seeding news...")
+        now = datetime.now(timezone.utc)
+        seed_news = [
+            {"article_id": "news_seed_001", "user_id": "seed_user_01", "user_name": "Алан М.", "user_picture": "", "user_points": 150,
+             "title": "Ремонт дороги на ул. Ленина завершён", "content": "После многочисленных обращений граждан через Народный Контроль, администрация города наконец-то отремонтировала участок дороги на улице Ленина, 40-50. Ямы заделаны, положен новый асфальт. Благодарим всех, кто не остался равнодушным!",
+             "level": "city", "category": "infrastructure", "photos": [], "is_urgent": False, "views": 234, "likes": 45, "comments_count": 12, "created_at": (now - timedelta(hours=6)).isoformat()},
+            {"article_id": "news_seed_002", "user_id": "seed_user_02", "user_name": "Мария К.", "user_picture": "", "user_points": 80,
+             "title": "Внимание! Просроченная продукция в сети магазинов", "content": "За последнюю неделю поступило более 15 отзывов о просроченной молочной продукции в нескольких магазинах города. Роспотребнадзор уже начал проверку. Будьте внимательны при покупках и проверяйте сроки годности!",
+             "level": "city", "category": "health", "photos": [], "is_urgent": True, "views": 567, "likes": 89, "comments_count": 34, "created_at": (now - timedelta(hours=3)).isoformat()},
+            {"article_id": "news_seed_003", "user_id": "seed_user_03", "user_name": "Георгий Т.", "user_picture": "", "user_points": 200,
+             "title": "Субботник во дворе дома 15 по ул. Мира", "content": "Приглашаем всех жителей двора принять участие в субботнике в эту субботу в 10:00. Будем убирать территорию, красить бордюры и высаживать цветы. Инвентарь предоставляется. Все неравнодушные — добро пожаловать!",
+             "level": "yard", "category": "community", "photos": [], "is_urgent": False, "views": 45, "likes": 18, "comments_count": 7, "created_at": (now - timedelta(hours=12)).isoformat()},
+            {"article_id": "news_seed_004", "user_id": "seed_user_01", "user_name": "Алан М.", "user_picture": "", "user_points": 150,
+             "title": "Новые тарифы ЖКХ: что изменится с марта", "content": "С 1 марта 2026 года вступают в силу новые тарифы на коммунальные услуги. Повышение составит от 3% до 8% в зависимости от категории услуг. Подробный разбор изменений и советы по экономии читайте в полном тексте.",
+             "level": "republic", "category": "economics", "photos": [], "is_urgent": False, "views": 1230, "likes": 34, "comments_count": 56, "created_at": (now - timedelta(days=1)).isoformat()},
+            {"article_id": "news_seed_005", "user_id": "seed_user_02", "user_name": "Мария К.", "user_picture": "", "user_points": 80,
+             "title": "Открытие нового парка в Промышленном районе", "content": "В субботу состоится торжественное открытие нового парка отдыха в Промышленном районе. Площадь парка — 5 гектаров, есть детские и спортивные площадки, зоны для пикника. Вход свободный.",
+             "level": "district", "category": "community", "photos": [], "is_urgent": False, "views": 89, "likes": 23, "comments_count": 5, "created_at": (now - timedelta(hours=18)).isoformat()},
+        ]
+        await db.news.insert_many(seed_news)
+        logger.info(f"Seeded {len(seed_news)} news articles")
 
     # Ensure existing test users have referral_code and role
     await db.users.update_many(

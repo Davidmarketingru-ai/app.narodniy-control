@@ -1,10 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Loader2, AlertCircle } from 'lucide-react';
 
 export default function AuthCallback() {
-  const navigate = useNavigate();
   const { login } = useAuth();
   const hasProcessed = useRef(false);
   const [error, setError] = useState('');
@@ -13,34 +11,37 @@ export default function AuthCallback() {
     if (hasProcessed.current) return;
     hasProcessed.current = true;
 
-    // Use window.location.hash directly for reliability
+    // Use window.location.hash directly for maximum reliability
     const hash = window.location.hash;
-    const params = new URLSearchParams(hash.replace('#', '?'));
+    console.log('AuthCallback: Raw hash:', hash);
+
+    const params = new URLSearchParams(hash.substring(1)); // Remove the leading #
     const sessionId = params.get('session_id');
+
+    console.log('AuthCallback: Extracted session_id:', sessionId ? sessionId.substring(0, 10) + '...' : 'null');
 
     if (!sessionId) {
       console.error('AuthCallback: No session_id found in hash:', hash);
       setError('Не удалось получить session_id. Попробуйте ещё раз.');
-      setTimeout(() => navigate('/login', { replace: true }), 3000);
+      setTimeout(() => { window.location.href = '/login'; }, 3000);
       return;
     }
 
     (async () => {
       try {
-        console.log('AuthCallback: Processing session_id...');
-        const user = await login(sessionId);
-        console.log('AuthCallback: Login successful, redirecting to dashboard');
-        // Clear hash from URL before navigating
-        window.history.replaceState(null, '', window.location.pathname);
-        navigate('/dashboard', { replace: true, state: { user } });
+        console.log('AuthCallback: Calling login with session_id...');
+        await login(sessionId);
+        console.log('AuthCallback: Login successful, redirecting...');
+        // Use hard redirect for maximum reliability — ensures cookie is picked up on fresh page load
+        window.location.href = '/dashboard';
       } catch (err) {
-        console.error('AuthCallback: Login error:', err?.response?.data || err?.message || err);
+        console.error('AuthCallback: Login error:', err?.response?.status, err?.response?.data || err?.message);
         const detail = err?.response?.data?.detail || 'Ошибка авторизации. Попробуйте снова.';
         setError(detail);
-        setTimeout(() => navigate('/login', { replace: true }), 3000);
+        setTimeout(() => { window.location.href = '/login'; }, 3000);
       }
     })();
-  }, [login, navigate]);
+  }, [login]);
 
   if (error) {
     return (

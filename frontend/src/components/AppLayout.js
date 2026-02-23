@@ -174,7 +174,7 @@ export default function AppLayout({ children }) {
 
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 glass border-t border-border/50 z-40 flex items-center justify-around px-2 py-2" data-testid="bottom-nav">
-        {navItems.slice(0, 5).map(item => {
+        {[navItems[0], navItems[1], navItems[2], navItems[3], navItems[8]].map(item => {
           const isActive = location.pathname === item.to || (item.to === '/dashboard' && location.pathname === '/');
           return (
             <NavLink

@@ -3,16 +3,20 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home, Map, PlusCircle, Bell, User, Award, Shield,
-  Menu, X, LogOut, Star, ShieldAlert
+  Menu, X, LogOut, Star, ShieldAlert, Newspaper, LayoutGrid, MapPin, ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationsApi } from '../lib/api';
 
 const navItems = [
   { to: '/dashboard', label: 'Главная', icon: Home },
+  { to: '/news', label: 'Новости', icon: Newspaper },
+  { to: '/widgets', label: 'Инфо', icon: LayoutGrid },
+  { to: '/problems-map', label: 'Проблемы', icon: MapPin },
   { to: '/map', label: 'Карта', icon: Map },
   { to: '/create', label: 'Отзыв', icon: PlusCircle },
   { to: '/rewards', label: 'Награды', icon: Award },
+  { to: '/verification', label: 'Верификация', icon: ShieldCheck },
   { to: '/notifications', label: 'Уведомления', icon: Bell },
   { to: '/profile', label: 'Профиль', icon: User },
 ];

@@ -34,7 +34,8 @@ function ProtectedRoute({ children }) {
 }
 
 function AppRouter() {
-  const location = useLocation();
+  // useLocation triggers re-renders on route changes
+  useLocation();
 
   // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
   // Check URL fragment for session_id — use window.location.hash for reliability

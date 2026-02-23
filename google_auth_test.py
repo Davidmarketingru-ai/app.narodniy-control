@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 
 class GoogleAuthTester:
-    def __init__(self, base_url="https://rebuild-engine-1.preview.emergentagent.com"):
+    def __init__(self, base_url="https://community-voice-17.preview.emergentagent.com"):
         self.base_url = base_url
         self.test_session_token = "test_session_1771462961642"  # From test credentials
         self.test_user_id = "test-user-1771462961642"
@@ -217,7 +217,7 @@ class GoogleAuthTester:
 
 def main():
     print("🚀 Testing Google Auth Flow Components...")
-    print("📍 Backend URL: https://rebuild-engine-1.preview.emergentagent.com")
+    print("📍 Backend URL: https://community-voice-17.preview.emergentagent.com")
     print("🔑 Using test session token: test_session_1771462961642")
     print("📝 Testing auth endpoints mentioned in bug fix...")
     

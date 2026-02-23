@@ -3,7 +3,7 @@ import sys
 from datetime import datetime
 
 class ComprehensiveAPITester:
-    def __init__(self, base_url="https://rebuild-engine-1.preview.emergentagent.com"):
+    def __init__(self, base_url="https://community-voice-17.preview.emergentagent.com"):
         self.base_url = base_url
         self.session_token = "test_session_1771462961642"  # From test credentials
         self.user_id = "test-user-1771462961642"
@@ -386,7 +386,7 @@ class ComprehensiveAPITester:
 
 def main():
     print("🚀 Starting comprehensive API testing...")
-    print("📍 Backend URL: https://rebuild-engine-1.preview.emergentagent.com")
+    print("📍 Backend URL: https://community-voice-17.preview.emergentagent.com")
     print("🔑 Using test session token: test_session_1771462961642")
     
     tester = ComprehensiveAPITester()

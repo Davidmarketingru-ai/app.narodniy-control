@@ -42,8 +42,8 @@ function AppRouter() {
   const location = useLocation();
 
   // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-  // Check URL fragment for session_id synchronously (before render)
-  if (location.hash?.includes('session_id=')) {
+  // Check URL fragment for session_id — use window.location.hash for reliability
+  if (window.location.hash?.includes('session_id=')) {
     return <AuthCallback />;
   }
 

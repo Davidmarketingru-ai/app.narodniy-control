@@ -657,6 +657,262 @@ async def admin_list_users(request: Request):
     users = await db.users.find({}, {"_id": 0}).sort("created_at", -1).to_list(200)
     return users
 
+# ==================== Verification System ====================
+VERIFICATION_LEVELS = {
+    "basic": {"name": "Базовый", "description": "Email/Google", "icon": "user", "color": "#6b7280"},
+    "confirmed": {"name": "Подтверждённый", "description": "Яндекс ID / Банк ID", "icon": "shield-check", "color": "#3b82f6"},
+    "verified": {"name": "Верифицированный", "description": "Паспорт + телефон", "icon": "shield", "color": "#10b981"},
+}
+
+@api_router.get("/verification/status")
+async def get_verification_status(request: Request):
+    user = await require_user(request)
+    return {
+        "level": user.get("verification_level", "basic"),
+        "phone_verified": user.get("phone_verified", False),
+        "passport_verified": user.get("passport_verified", False),
+        "bank_id_verified": user.get("bank_id_verified", False),
+        "yandex_id_verified": user.get("yandex_id_verified", False),
+        "levels": VERIFICATION_LEVELS,
+    }
+
+@api_router.post("/verification/phone")
+async def verify_phone(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    phone = body.get("phone", "").strip()
+    if not phone or len(phone) < 10:
+        raise HTTPException(status_code=400, detail="Некорректный номер телефона")
+    code = str(uuid.uuid4().int)[:6]
+    await db.verification_codes.insert_one({
+        "user_id": user["user_id"], "phone": phone, "code": code,
+        "type": "phone", "created_at": datetime.now(timezone.utc).isoformat(),
+        "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    })
+    logger.info(f"Phone verification code for {user['user_id']}: {code}")
+    return {"success": True, "message": "Код отправлен (в тестовом режиме код: " + code + ")"}
+
+@api_router.post("/verification/phone/confirm")
+async def confirm_phone(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    code = body.get("code", "").strip()
+    record = await db.verification_codes.find_one(
+        {"user_id": user["user_id"], "code": code, "type": "phone"}, {"_id": 0}
+    )
+    if not record:
+        raise HTTPException(status_code=400, detail="Неверный код")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {
+        "phone": record["phone"], "phone_verified": True
+    }})
+    await db.verification_codes.delete_many({"user_id": user["user_id"], "type": "phone"})
+    level = await _compute_verification_level(user["user_id"])
+    return {"success": True, "verification_level": level}
+
+@api_router.post("/verification/passport")
+async def verify_passport(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    full_name = body.get("full_name", "").strip()
+    birth_date = body.get("birth_date", "").strip()
+    series = body.get("series", "").strip()
+    number = body.get("number", "").strip()
+    if not all([full_name, birth_date, series, number]):
+        raise HTTPException(status_code=400, detail="Заполните все поля")
+    if len(series) != 4 or len(number) != 6:
+        raise HTTPException(status_code=400, detail="Серия (4 цифры) и номер (6 цифр)")
+    import hashlib
+    passport_hash = hashlib.sha256(f"{series}{number}{birth_date}".encode()).hexdigest()
+    existing = await db.users.find_one({"passport_hash": passport_hash, "user_id": {"$ne": user["user_id"]}}, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Эти паспортные данные уже используются")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {
+        "passport_verified": True, "passport_hash": passport_hash,
+        "passport_name": full_name, "passport_birth_date": birth_date
+    }})
+    level = await _compute_verification_level(user["user_id"])
+    return {"success": True, "verification_level": level}
+
+@api_router.post("/verification/bank-id")
+async def verify_bank_id(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    bank = body.get("bank", "sber")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {
+        "bank_id_verified": True, "bank_id_provider": bank
+    }})
+    level = await _compute_verification_level(user["user_id"])
+    logger.info(f"Bank ID verified for {user['user_id']} via {bank}")
+    return {"success": True, "verification_level": level, "message": f"Банк ID ({bank}) подтверждён"}
+
+@api_router.post("/verification/yandex-id")
+async def verify_yandex_id(request: Request):
+    user = await require_user(request)
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"yandex_id_verified": True}})
+    level = await _compute_verification_level(user["user_id"])
+    return {"success": True, "verification_level": level}
+
+async def _compute_verification_level(user_id: str) -> str:
+    user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+    if user.get("passport_verified") and user.get("phone_verified"):
+        level = "verified"
+    elif user.get("bank_id_verified") or user.get("yandex_id_verified"):
+        level = "confirmed"
+    else:
+        level = "basic"
+    await db.users.update_one({"user_id": user_id}, {"$set": {"verification_level": level}})
+    return level
+
+# ==================== News Feed ====================
+@api_router.get("/news")
+async def list_news(level: Optional[str] = None, category: Optional[str] = None, limit: int = 30):
+    query = {}
+    if level:
+        query["level"] = level
+    if category:
+        query["category"] = category
+    articles = await db.news.find(query, {"_id": 0}).sort("created_at", -1).to_list(limit)
+    return articles
+
+@api_router.get("/news/{article_id}")
+async def get_news_article(article_id: str):
+    article = await db.news.find_one({"article_id": article_id}, {"_id": 0})
+    if not article:
+        raise HTTPException(status_code=404, detail="Not found")
+    await db.news.update_one({"article_id": article_id}, {"$inc": {"views": 1}})
+    return article
+
+@api_router.post("/news")
+async def create_news(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    title = body.get("title", "").strip()
+    content = body.get("content", "").strip()
+    level = body.get("level", "city")
+    category = body.get("category", "general")
+    photos = body.get("photos", [])
+    is_urgent = body.get("is_urgent", False)
+    if not title or not content:
+        raise HTTPException(status_code=400, detail="Заголовок и содержание обязательны")
+    article_id = f"news_{uuid.uuid4().hex[:12]}"
+    await db.news.insert_one({
+        "article_id": article_id,
+        "user_id": user["user_id"],
+        "user_name": user.get("name", ""),
+        "user_picture": user.get("picture", ""),
+        "user_points": user.get("points", 0),
+        "title": title, "content": content,
+        "level": level, "category": category,
+        "photos": photos, "is_urgent": is_urgent,
+        "views": 0, "likes": 0, "comments_count": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    created = await db.news.find_one({"article_id": article_id}, {"_id": 0})
+    return created
+
+@api_router.post("/news/{article_id}/like")
+async def like_news(request: Request, article_id: str):
+    user = await require_user(request)
+    existing = await db.news_likes.find_one({"article_id": article_id, "user_id": user["user_id"]})
+    if existing:
+        await db.news_likes.delete_one({"article_id": article_id, "user_id": user["user_id"]})
+        await db.news.update_one({"article_id": article_id}, {"$inc": {"likes": -1}})
+        return {"liked": False}
+    await db.news_likes.insert_one({"article_id": article_id, "user_id": user["user_id"]})
+    await db.news.update_one({"article_id": article_id}, {"$inc": {"likes": 1}})
+    return {"liked": True}
+
+@api_router.get("/news/{article_id}/comments")
+async def get_news_comments(article_id: str):
+    comments = await db.news_comments.find({"article_id": article_id}, {"_id": 0}).sort("created_at", 1).to_list(100)
+    return comments
+
+@api_router.post("/news/{article_id}/comments")
+async def add_news_comment(request: Request, article_id: str):
+    user = await require_user(request)
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Комментарий не может быть пустым")
+    comment_id = f"nc_{uuid.uuid4().hex[:12]}"
+    await db.news_comments.insert_one({
+        "comment_id": comment_id, "article_id": article_id,
+        "user_id": user["user_id"], "user_name": user.get("name", ""),
+        "user_picture": user.get("picture", ""), "user_points": user.get("points", 0),
+        "text": text, "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    await db.news.update_one({"article_id": article_id}, {"$inc": {"comments_count": 1}})
+    return {"success": True, "comment_id": comment_id}
+
+# ==================== Info Widgets (Weather, Currency, UV, Magnetic) ====================
+@api_router.get("/widgets/weather")
+async def get_weather(lat: float = 43.023, lon: float = 44.682):
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            resp = await c.get(f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,uv_index&daily=temperature_2m_max,temperature_2m_min,weather_code,uv_index_max&timezone=auto&forecast_days=3")
+            if resp.status_code == 200:
+                return resp.json()
+    except Exception as e:
+        logger.error(f"Weather API error: {e}")
+    raise HTTPException(status_code=503, detail="Сервис погоды недоступен")
+
+@api_router.get("/widgets/currency")
+async def get_currency():
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            resp = await c.get("https://www.cbr-xml-daily.ru/daily_json.js")
+            if resp.status_code == 200:
+                data = resp.json()
+                valutes = data.get("Valute", {})
+                result = {}
+                for code in ["USD", "EUR", "CNY", "GBP", "TRY"]:
+                    if code in valutes:
+                        v = valutes[code]
+                        result[code] = {"name": v["Name"], "value": v["Value"], "previous": v["Previous"], "nominal": v["Nominal"]}
+                return {"date": data.get("Date", ""), "rates": result}
+    except Exception as e:
+        logger.error(f"Currency API error: {e}")
+    raise HTTPException(status_code=503, detail="Сервис курсов недоступен")
+
+@api_router.get("/widgets/magnetic")
+async def get_magnetic_storms():
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            resp = await c.get("https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json")
+            if resp.status_code == 200:
+                data = resp.json()
+                recent = data[-8:] if len(data) > 8 else data[1:]
+                return {"data": [{"time": r[0], "kp": float(r[1]), "kp_str": r[2]} for r in recent if len(r) > 2]}
+    except Exception as e:
+        logger.error(f"Magnetic API error: {e}")
+    raise HTTPException(status_code=503, detail="Сервис магнитных бурь недоступен")
+
+@api_router.get("/widgets/locations")
+async def search_locations(q: str = ""):
+    if len(q) < 2:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            resp = await c.get(f"https://geocoding-api.open-meteo.com/v1/search?name={q}&count=8&language=ru&format=json")
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                return [{"name": r.get("name", ""), "admin1": r.get("admin1", ""), "country": r.get("country", ""), "latitude": r.get("latitude"), "longitude": r.get("longitude")} for r in results]
+    except Exception as e:
+        logger.error(f"Location search error: {e}")
+    return []
+
+# ==================== Problems Map ====================
+@api_router.get("/map/problems")
+async def get_problems_map():
+    reviews = await db.reviews.find(
+        {"latitude": {"$exists": True}, "longitude": {"$exists": True}},
+        {"_id": 0, "review_id": 1, "title": 1, "status": 1, "rating": 1,
+         "latitude": 1, "longitude": 1, "org_name": 1, "created_at": 1,
+         "verification_count": 1}
+    ).sort("created_at", -1).to_list(500)
+    return reviews
+
 # ==================== Review Expiry Background Task ====================
 async def expire_reviews_task():
     """Background task that marks expired pending reviews"""

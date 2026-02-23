@@ -203,14 +203,17 @@ async def auth_session(request: Request, response: Response):
     session_id = body.get("session_id")
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id required")
-    async with httpx.AsyncClient() as client_http:
+    logger.info(f"Auth session request received, session_id starts with: {session_id[:10]}...")
+    async with httpx.AsyncClient(timeout=15.0) as client_http:
         resp = await client_http.get(
             "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
             headers={"X-Session-ID": session_id}
         )
         if resp.status_code != 200:
+            logger.error(f"Emergent auth returned {resp.status_code}: {resp.text}")
             raise HTTPException(status_code=401, detail="Invalid session")
         data = resp.json()
+    logger.info(f"Emergent auth returned user: {data.get('email', 'unknown')}")
     email = data["email"]
     name = data.get("name", "")
     picture = data.get("picture", "")

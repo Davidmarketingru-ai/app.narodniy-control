@@ -13,6 +13,10 @@ import RewardsPage from './pages/RewardsPage';
 import NotificationsPage from './pages/NotificationsPage';
 import ReviewDetailPage from './pages/ReviewDetailPage';
 import AdminPage from './pages/AdminPage';
+import NewsPage from './pages/NewsPage';
+import WidgetsPage from './pages/WidgetsPage';
+import ProblemsMapPage from './pages/ProblemsMapPage';
+import VerificationPage from './pages/VerificationPage';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children }) {
@@ -54,6 +58,10 @@ function AppRouter() {
       <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
       <Route path="/reviews/:reviewId" element={<ProtectedRoute><ReviewDetailPage /></ProtectedRoute>} />
       <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
+      <Route path="/news" element={<ProtectedRoute><NewsPage /></ProtectedRoute>} />
+      <Route path="/widgets" element={<ProtectedRoute><WidgetsPage /></ProtectedRoute>} />
+      <Route path="/problems-map" element={<ProtectedRoute><ProblemsMapPage /></ProtectedRoute>} />
+      <Route path="/verification" element={<ProtectedRoute><VerificationPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

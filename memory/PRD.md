@@ -26,51 +26,43 @@ Rebuild a React Native application "Народный Контроль" (People's
 - Rating leaderboard
 
 ### Phase 2 — Feature Expansion (Complete — Feb 23, 2026)
-- **News Feed** (`/news`): Multi-level (yard→world) news with categories, likes, comments, urgency flag, create form
-- **Info Widgets** (`/widgets`): Weather (open-meteo), Currency rates (CBR), Magnetic storms (NOAA), UV index, Location search
-- **Problems Map** (`/problems-map`): Leaflet map with color-coded markers by status, filters, linked to reviews
-- **Identity Verification** (`/verification`): Phone (SMS code), Passport (hashed), Bank ID (Sber/Tinkoff/VTB/Alfa), Yandex ID — 3 verification levels (basic → confirmed → verified)
+- **News Feed** (`/news`): Multi-level (yard→world) news with categories, likes, comments, urgency flag
+- **Info Widgets** (`/widgets`): Weather (open-meteo), Currency rates (CBR), Magnetic storms (NOAA), UV index
+- **Problems Map** (`/problems-map`): Leaflet map with color-coded markers by status
+- **Identity Verification** (`/verification`): Phone, Passport, Bank ID, Yandex ID — 3 levels
 
-## API Endpoints
-### Auth
-- POST `/api/auth/session` — Google auth callback
-- GET `/api/auth/me` — Current user
-- POST `/api/auth/logout`
+### Phase 3 — Legal Compliance & Support (Complete — Mar 10, 2026)
+- **Support Ticket System** (`/support`): FAQ (8 items), ticket creation with 6 categories (bug, complaint, suggestion, question, rights_violation, other), replies, status management (open/in_progress/resolved/closed), priority system, admin ticket management
+- **Terms of Service** (`/terms`): Full 9-section user agreement with placeholder legal entity data, references to ГК РФ, УК РФ ст.128.1, КоАП ст.5.61, ФЗ-282, ФЗ-38
+- **Privacy Policy** (`/privacy`): Full 9-section policy compliant with 152-ФЗ, references to Роскомнадзор, DPO contact, data storage on RF territory
+- **Consent System**: Mandatory checkboxes on login (terms acceptance + age 16+ per ФЗ-436), consent recorded in user profile with timestamp and IP
+- **Cookie Banner**: Persistent cookie consent notification with localStorage tracking
+- **Legal Info API**: `/api/legal/info` returns operator details (placeholder ИНН, ОГРН, address)
 
-### Content
-- GET/POST `/api/reviews`, GET `/api/reviews/{id}`
-- POST `/api/verifications`, GET `/api/verifications/{review_id}`
-- GET/POST `/api/organizations`, GET `/api/organizations/{id}`
-- GET/POST `/api/news`, GET `/api/news/{id}`, POST `/api/news/{id}/like`
-- GET/POST `/api/news/{id}/comments`
-
-### Widgets
-- GET `/api/widgets/weather?lat=&lon=`
-- GET `/api/widgets/currency`
-- GET `/api/widgets/magnetic`
-- GET `/api/widgets/locations?q=`
-
-### Map
-- GET `/api/map/problems`
-
-### User
-- GET/PUT `/api/profile`
-- GET `/api/rating/status`, GET `/api/rating/leaderboard`
-- POST `/api/referral/apply`, GET `/api/referral/stats`
-- GET `/api/verification/status`, POST `/api/verification/phone`, etc.
-
-### Admin
-- GET `/api/admin/reviews`, PUT `/api/admin/reviews/{id}/approve|reject`
-- GET `/api/admin/stats`, GET `/api/admin/users`
+## Key Pages & Routes
+| Route | Auth | Description |
+|-------|------|-------------|
+| `/login` | No | Login with consent checkboxes |
+| `/terms` | No | User agreement |
+| `/privacy` | No | Privacy policy |
+| `/dashboard` | Yes | Main dashboard |
+| `/news` | Yes | News feed |
+| `/widgets` | Yes | Weather, currency, magnetic |
+| `/problems-map` | Yes | Problems map |
+| `/map` | Yes | Organizations map |
+| `/create` | Yes | Create review |
+| `/rewards` | Yes | Rewards shop |
+| `/verification` | Yes | Identity verification |
+| `/support` | Yes | Support tickets + FAQ |
+| `/notifications` | Yes | Notifications |
+| `/profile` | Yes | User profile |
+| `/admin` | Yes (admin) | Admin panel |
 
 ## Prioritized Backlog
 
 ### P0 — System of People's Councils
 Hierarchical council system (Yard → District → City → Republic → Country) with:
-- Discussion forums
-- Voting mechanisms
-- Budget management
-- Member approval workflows
+- Discussion forums, Voting mechanisms, Budget management, Member approval workflows
 
 ### P1 — Reviews for Public Sector
 - Extend reviews to government services (hospitals, schools, police)
@@ -78,7 +70,6 @@ Hierarchical council system (Yard → District → City → Republic → Country
 
 ### P1 — Statistics Dashboard
 - Public analytics: city/district ratings, solved vs unsolved problems
-- Individual contribution tracking
 
 ### P2 — Future Features
 - AI-powered problem classification and routing
@@ -86,9 +77,4 @@ Hierarchical council system (Yard → District → City → Republic → Country
 - SOS emergency button
 - Business features (QR codes, verified accounts)
 - Multi-language support, accessibility, offline mode
-
-## Technical Notes
-- Auth flow uses non-standard Google OAuth callback (workaround for CORS)
-- `server.py` is a monolith — refactoring into APIRouter modules recommended
-- Widget APIs use free tiers (open-meteo, CBR, NOAA) — designed for easy replacement
-- Seed data exists for organizations, reviews, news
+- Refactoring server.py into modular APIRouter structure

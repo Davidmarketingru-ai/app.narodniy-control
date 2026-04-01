@@ -1,9 +1,16 @@
-import React from 'react';
-import { Shield } from 'lucide-react';
+import React, { useState } from 'react';
+import { Shield, Check } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
 export default function LoginPage() {
+  const [consentChecked, setConsentChecked] = useState(false);
+  const [ageChecked, setAgeChecked] = useState(false);
+
+  const canLogin = consentChecked && ageChecked;
+
   const handleGoogleLogin = () => {
+    if (!canLogin) return;
     // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
     const redirectUrl = window.location.origin + '/dashboard';
     window.location.href = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
@@ -34,14 +41,56 @@ export default function LoginPage() {
           <h1 className="text-3xl font-bold text-foreground tracking-tight mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
             Народный Контроль
           </h1>
-          <p className="text-muted-foreground mb-8 text-lg">
+          <p className="text-muted-foreground mb-6 text-lg">
             Верифицированные отзывы для вашего города
           </p>
 
+          {/* Consent checkboxes */}
+          <div className="text-left space-y-3 mb-6">
+            <label className="flex items-start gap-3 cursor-pointer group" data-testid="consent-checkbox-label">
+              <div className="mt-0.5 shrink-0">
+                <input type="checkbox" checked={consentChecked} onChange={e => setConsentChecked(e.target.checked)}
+                  className="sr-only" data-testid="consent-checkbox" />
+                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                  consentChecked ? 'bg-primary border-primary' : 'border-muted-foreground/40 group-hover:border-primary/60'
+                }`}>
+                  {consentChecked && <Check className="w-3 h-3 text-primary-foreground" />}
+                </div>
+              </div>
+              <span className="text-xs text-muted-foreground leading-relaxed">
+                Я принимаю{' '}
+                <Link to="/terms" className="text-primary hover:underline">Пользовательское соглашение</Link>
+                {' '}и{' '}
+                <Link to="/privacy" className="text-primary hover:underline">Политику конфиденциальности</Link>
+                , даю согласие на обработку персональных данных в соответствии с ФЗ-152
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer group" data-testid="age-checkbox-label">
+              <div className="mt-0.5 shrink-0">
+                <input type="checkbox" checked={ageChecked} onChange={e => setAgeChecked(e.target.checked)}
+                  className="sr-only" data-testid="age-checkbox" />
+                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                  ageChecked ? 'bg-primary border-primary' : 'border-muted-foreground/40 group-hover:border-primary/60'
+                }`}>
+                  {ageChecked && <Check className="w-3 h-3 text-primary-foreground" />}
+                </div>
+              </div>
+              <span className="text-xs text-muted-foreground leading-relaxed">
+                Мне исполнилось 16 лет (ФЗ-436 «О защите детей»)
+              </span>
+            </label>
+          </div>
+
           <button
             onClick={handleGoogleLogin}
+            disabled={!canLogin}
             data-testid="google-login-btn"
-            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-gray-800 font-medium py-4 px-6 rounded-xl border border-gray-200 transition-all hover:scale-[1.02] active:scale-[0.98] shadow-sm"
+            className={`w-full flex items-center justify-center gap-3 font-medium py-4 px-6 rounded-xl border transition-all shadow-sm ${
+              canLogin
+                ? 'bg-white hover:bg-gray-50 text-gray-800 border-gray-200 hover:scale-[1.02] active:scale-[0.98] cursor-pointer'
+                : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed opacity-60'
+            }`}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -52,9 +101,15 @@ export default function LoginPage() {
             Войти через Google
           </button>
 
-          <p className="text-sm text-muted-foreground mt-6">
-            Войдите, чтобы создавать отзывы и зарабатывать баллы
+          <p className="text-[11px] text-muted-foreground mt-4">
+            Сервис предназначен для лиц старше 16 лет (ФЗ-436)
           </p>
+
+          <div className="flex items-center justify-center gap-3 mt-4 text-[11px] text-muted-foreground">
+            <Link to="/terms" className="hover:text-foreground transition-colors">Соглашение</Link>
+            <span>|</span>
+            <Link to="/privacy" className="hover:text-foreground transition-colors">Конфиденциальность</Link>
+          </div>
         </div>
       </motion.div>
     </div>

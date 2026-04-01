@@ -25,6 +25,10 @@ export function AuthProvider({ children }) {
   const login = async (sessionId) => {
     const res = await axios.post(`${API}/auth/session`, { session_id: sessionId }, { withCredentials: true });
     setUser(res.data);
+    // Record consent acceptance
+    try {
+      await axios.post(`${API}/auth/consent`, { type: 'terms_and_privacy' }, { withCredentials: true });
+    } catch {}
     return res.data;
   };
 

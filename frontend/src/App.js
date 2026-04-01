@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import AppLayout from './components/AppLayout';
+import { CookieBanner } from './components/CookieBanner';
 import LoginPage from './pages/LoginPage';
 import AuthCallback from './pages/AuthCallback';
 import DashboardPage from './pages/DashboardPage';
@@ -17,6 +18,9 @@ import NewsPage from './pages/NewsPage';
 import WidgetsPage from './pages/WidgetsPage';
 import ProblemsMapPage from './pages/ProblemsMapPage';
 import VerificationPage from './pages/VerificationPage';
+import SupportPage from './pages/SupportPage';
+import TermsPage from './pages/TermsPage';
+import PrivacyPage from './pages/PrivacyPage';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children }) {
@@ -50,6 +54,8 @@ function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
       <Route path="/create" element={<ProtectedRoute><CreateReviewPage /></ProtectedRoute>} />
       <Route path="/map" element={<ProtectedRoute><MapPage /></ProtectedRoute>} />
@@ -62,6 +68,7 @@ function AppRouter() {
       <Route path="/widgets" element={<ProtectedRoute><WidgetsPage /></ProtectedRoute>} />
       <Route path="/problems-map" element={<ProtectedRoute><ProblemsMapPage /></ProtectedRoute>} />
       <Route path="/verification" element={<ProtectedRoute><VerificationPage /></ProtectedRoute>} />
+      <Route path="/support" element={<ProtectedRoute><SupportPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
@@ -74,6 +81,7 @@ function App() {
       <AuthProvider>
         <BrowserRouter>
           <AppRouter />
+          <CookieBanner />
         </BrowserRouter>
       </AuthProvider>
     </ThemeProvider>

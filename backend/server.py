@@ -1004,6 +1004,9 @@ async def seed_data():
     await db.news.create_index([("level", 1), ("created_at", -1)])
     await db.news.create_index("article_id", unique=True)
     await db.news_comments.create_index("article_id")
+    await db.support_tickets.create_index("user_id")
+    await db.support_tickets.create_index("ticket_id", unique=True)
+    await db.support_tickets.create_index([("status", 1), ("updated_at", -1)])
 
     # Seed news
     news_count = await db.news.count_documents({})
@@ -1039,6 +1042,168 @@ async def seed_data():
     # Start background task for expiring reviews
     asyncio.create_task(expire_reviews_task())
     logger.info("Review expiry background task started")
+
+# ==================== Support Ticket System ====================
+TICKET_CATEGORIES = ["bug", "complaint", "suggestion", "question", "rights_violation", "other"]
+TICKET_STATUSES = ["open", "in_progress", "resolved", "closed"]
+
+FAQ_ITEMS = [
+    {"question": "Как создать отзыв?", "answer": "Перейдите на страницу 'Отзыв' через меню навигации, выберите организацию, заполните форму и отправьте. Отзыв будет опубликован после получения 2 подтверждений от других пользователей."},
+    {"question": "Как заработать баллы?", "answer": "Баллы начисляются за создание отзывов (10 баллов после верификации), подтверждение чужих отзывов (5 баллов) и использование реферального кода (25 баллов)."},
+    {"question": "Что такое верификация личности?", "answer": "Верификация подтверждает вашу личность через телефон, паспорт или банковский ID. Это повышает доверие к вашим отзывам и открывает дополнительные функции."},
+    {"question": "Как удалить свой аккаунт?", "answer": "Отправьте запрос через техподдержку с категорией 'Вопрос'. Мы обработаем запрос в течение 30 дней согласно 152-ФЗ."},
+    {"question": "Куда обращаться при нарушении прав?", "answer": "Создайте тикет с категорией 'Нарушение прав'. Мы рассмотрим обращение в приоритетном порядке в течение 24 часов."},
+    {"question": "Какие данные вы собираете?", "answer": "Мы собираем email, имя и фото из Google-аккаунта. При верификации — хэш паспортных данных и номер телефона. Подробнее в Политике конфиденциальности."},
+    {"question": "Сколько времени рассматривается обращение?", "answer": "Стандартные обращения — до 48 часов. Нарушения прав и жалобы — до 24 часов. Предложения — до 7 рабочих дней."},
+    {"question": "Почему мой отзыв истёк?", "answer": "Отзыв автоматически истекает через 24 часа, если не получит 2 подтверждения от других пользователей. Попробуйте создать отзыв заново."},
+]
+
+@api_router.get("/support/faq")
+async def get_faq():
+    return FAQ_ITEMS
+
+@api_router.post("/support/tickets")
+async def create_ticket(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    subject = body.get("subject", "").strip()
+    message = body.get("message", "").strip()
+    category = body.get("category", "question")
+    if not subject or not message:
+        raise HTTPException(status_code=400, detail="Тема и сообщение обязательны")
+    if category not in TICKET_CATEGORIES:
+        category = "other"
+    ticket_id = f"ticket_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    priority = "high" if category in ["rights_violation", "complaint"] else "normal"
+    await db.support_tickets.insert_one({
+        "ticket_id": ticket_id,
+        "user_id": user["user_id"],
+        "user_name": user.get("name", ""),
+        "user_email": user.get("email", ""),
+        "subject": subject,
+        "category": category,
+        "status": "open",
+        "priority": priority,
+        "created_at": now,
+        "updated_at": now,
+        "messages": [{
+            "message_id": f"msg_{uuid.uuid4().hex[:8]}",
+            "sender": "user",
+            "sender_name": user.get("name", ""),
+            "text": message,
+            "created_at": now,
+        }],
+    })
+    await create_notification(user["user_id"], "ticket_created", "Обращение создано",
+        f'Ваше обращение #{ticket_id[-6:]} принято. Мы ответим в течение 48 часов.', None)
+    ticket = await db.support_tickets.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    return ticket
+
+@api_router.get("/support/tickets")
+async def list_user_tickets(request: Request):
+    user = await require_user(request)
+    tickets = await db.support_tickets.find(
+        {"user_id": user["user_id"]}, {"_id": 0}
+    ).sort("updated_at", -1).to_list(50)
+    return tickets
+
+@api_router.get("/support/tickets/{ticket_id}")
+async def get_ticket(request: Request, ticket_id: str):
+    user = await require_user(request)
+    ticket = await db.support_tickets.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Тикет не найден")
+    if ticket["user_id"] != user["user_id"] and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    return ticket
+
+@api_router.post("/support/tickets/{ticket_id}/reply")
+async def reply_to_ticket(request: Request, ticket_id: str):
+    user = await require_user(request)
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Сообщение обязательно")
+    ticket = await db.support_tickets.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Тикет не найден")
+    if ticket["user_id"] != user["user_id"] and user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    is_support = user.get("role") == "admin"
+    msg = {
+        "message_id": f"msg_{uuid.uuid4().hex[:8]}",
+        "sender": "support" if is_support else "user",
+        "sender_name": "Техподдержка НК" if is_support else user.get("name", ""),
+        "text": text,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    new_status = "in_progress" if is_support and ticket["status"] == "open" else ticket["status"]
+    await db.support_tickets.update_one(
+        {"ticket_id": ticket_id},
+        {"$push": {"messages": msg}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat(), "status": new_status}}
+    )
+    if is_support:
+        await create_notification(ticket["user_id"], "ticket_reply", "Ответ техподдержки",
+            f'Получен ответ на обращение #{ticket_id[-6:]}', None)
+    updated = await db.support_tickets.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    return updated
+
+@api_router.put("/support/tickets/{ticket_id}/status")
+async def update_ticket_status(request: Request, ticket_id: str):
+    user = await require_user(request)
+    body = await request.json()
+    new_status = body.get("status", "")
+    if new_status not in TICKET_STATUSES:
+        raise HTTPException(status_code=400, detail="Неверный статус")
+    ticket = await db.support_tickets.find_one({"ticket_id": ticket_id}, {"_id": 0})
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Тикет не найден")
+    if user.get("role") != "admin" and not (ticket["user_id"] == user["user_id"] and new_status == "closed"):
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    await db.support_tickets.update_one(
+        {"ticket_id": ticket_id},
+        {"$set": {"status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"success": True}
+
+# Admin: list all tickets
+@api_router.get("/admin/support/tickets")
+async def admin_list_tickets(request: Request, status: Optional[str] = None):
+    await require_admin(request)
+    query = {}
+    if status:
+        query["status"] = status
+    tickets = await db.support_tickets.find(query, {"_id": 0}).sort("updated_at", -1).to_list(200)
+    return tickets
+
+# ==================== Consent / Legal ====================
+@api_router.post("/auth/consent")
+async def record_consent(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    consent_type = body.get("type", "terms_and_privacy")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": {
+        "consent_accepted": True,
+        "consent_type": consent_type,
+        "consent_date": datetime.now(timezone.utc).isoformat(),
+        "consent_ip": request.client.host if request.client else "unknown",
+    }})
+    return {"success": True}
+
+@api_router.get("/legal/info")
+async def get_legal_info():
+    return {
+        "operator_name": "ООО «Народный Контроль»",
+        "inn": "0000000000",
+        "ogrn": "0000000000000",
+        "legal_address": "362000, РСО-Алания, г. Владикавказ, ул. Ленина, д. 1, оф. 100",
+        "email": "support@narodkontrol.ru",
+        "phone": "+7 (800) 000-00-00",
+        "age_restriction": "16+",
+        "data_protection_officer": "Иванов Иван Иванович",
+        "dpo_email": "dpo@narodkontrol.ru",
+    }
 
 # ==================== Health ====================
 @api_router.get("/")

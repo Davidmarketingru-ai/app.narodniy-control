@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home, Map, PlusCircle, Bell, User, Award, Shield,
-  Menu, X, LogOut, Star, ShieldAlert, Newspaper, LayoutGrid, MapPin, ShieldCheck
+  Menu, X, LogOut, Star, ShieldAlert, Newspaper, LayoutGrid, MapPin, ShieldCheck, HelpCircle
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationsApi } from '../lib/api';
@@ -17,6 +17,7 @@ const navItems = [
   { to: '/create', label: 'Отзыв', icon: PlusCircle },
   { to: '/rewards', label: 'Награды', icon: Award },
   { to: '/verification', label: 'Верификация', icon: ShieldCheck },
+  { to: '/support', label: 'Поддержка', icon: HelpCircle },
   { to: '/notifications', label: 'Уведомления', icon: Bell },
   { to: '/profile', label: 'Профиль', icon: User },
 ];
@@ -81,7 +82,7 @@ export default function AppLayout({ children }) {
         {/* User card at bottom */}
         {user && (
           <div className="mt-auto p-6 border-t border-border/50">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 mb-3">
               {user.picture ? (
                 <img src={user.picture} alt="" className="w-9 h-9 rounded-full object-cover" />
               ) : (
@@ -93,6 +94,11 @@ export default function AppLayout({ children }) {
                 <p className="text-sm font-medium text-foreground truncate">{user.name}</p>
                 <p className="text-xs text-muted-foreground font-mono">{user.points || 0} баллов</p>
               </div>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
+              <NavLink to="/terms" className="hover:text-muted-foreground">Соглашение</NavLink>
+              <span>|</span>
+              <NavLink to="/privacy" className="hover:text-muted-foreground">Конфиденциальность</NavLink>
             </div>
           </div>
         )}

@@ -6,7 +6,7 @@ Rebuild "Народный Контроль" (People's Control) into a modern ful
 ## Architecture
 - **Frontend:** React.js + Tailwind CSS + Leaflet + Framer Motion + Shadcn/UI
 - **Backend:** FastAPI + Motor (async MongoDB)
-- **Auth:** Emergent-managed Google OAuth
+- **Auth:** Emergent-managed Google OAuth (dedicated /auth/callback route)
 - **Database:** MongoDB
 
 ## Implemented Features
@@ -15,42 +15,37 @@ Rebuild "Народный Контроль" (People's Control) into a modern ful
 - Google Auth, user profiles, points/rating (7 tiers)
 - Organizations CRUD + Leaflet map
 - Review lifecycle: create → 2 verifications → approve/expire
-- Admin panel (moderation, users, stats)
-- Notifications, Rewards/shop, Referral program, File uploads, PWA, Leaderboard
+- Admin panel, Notifications, Rewards, Referral, File uploads, PWA, Leaderboard
 
 ### Phase 2 — Feature Expansion
-- News Feed (`/news`): multi-level, categories, likes, comments
-- Info Widgets (`/widgets`): weather, currency, magnetic storms, UV
-- Problems Map (`/problems-map`): color-coded markers, filters
-- Identity Verification (`/verification`): phone, passport, bank ID, Yandex ID
+- News Feed, Info Widgets (weather/currency/magnetic), Problems Map, Identity Verification
 
 ### Phase 3 — Legal Compliance & Support
-- Support ticket system (`/support`): FAQ, 6 categories, replies, admin management
-- Terms of Service (`/terms`), Privacy Policy (`/privacy`) — 152-FZ, 436-FZ compliant
-- Consent checkboxes on login (terms + age 16+), Cookie banner
-- Legal info API (`/api/legal/info`)
+- Support tickets + FAQ, Terms/Privacy (152-FZ, 436-FZ), Consent + Cookie banner
 
-### Phase 4 — Quick Wins / User Engagement (Complete — Apr 2, 2026)
-- **Interactive Onboarding** (3 steps + 20 bonus points)
-- **Verification Feed** (`/verify`): pending reviews sorted by expiry, excludes own/already-verified
-- **Social Sharing**: Telegram/VK/WhatsApp share buttons + copy link on reviews
-- **Adaptive Verification Timer**: 72h (<50 users) → 48h → 24h → 12h (1000+)
-- **Daily Missions + Streak**: 3 daily tasks (verify/read_news/visit_map), streak counter with x1.5 bonus at 7+ days
-- **OG Meta Tags**: social sharing preview for links
-- **Dashboard Redesign**: 3 quick action cards + daily missions widget
+### Phase 4 — User Engagement
+- Onboarding (3 steps), Verification Feed, Social Sharing, Adaptive Timer, Daily Missions + Streak
+
+### Bug Fix — Mobile Auth (Apr 2, 2026)
+- Dedicated `/auth/callback` route (unprotected) for Google OAuth redirect
+- Multi-source session_id extraction (hash, query, regex, sessionStorage)
+- Cookie SameSite changed to `none` for mobile browser compat
+- Backward compat: any page with `#session_id` → redirect to callback
+- Mobile error UI with retry button and help tip
 
 ## Routes
 | Route | Auth | Description |
 |-------|------|-------------|
 | `/login` | No | Login with consent |
+| `/auth/callback` | No | Google OAuth callback |
 | `/terms` | No | User agreement |
 | `/privacy` | No | Privacy policy |
-| `/dashboard` | Yes | Main + missions + onboarding |
+| `/dashboard` | Yes | Main + missions |
 | `/news` | Yes | News feed |
 | `/verify` | Yes | Verification feed |
-| `/widgets` | Yes | Weather/currency/magnetic |
+| `/widgets` | Yes | Weather/currency |
 | `/problems-map` | Yes | Problems map |
-| `/map` | Yes | Organizations map |
+| `/map` | Yes | Organizations |
 | `/create` | Yes | Create review |
 | `/rewards` | Yes | Rewards shop |
 | `/verification` | Yes | Identity verification |
@@ -59,18 +54,7 @@ Rebuild "Народный Контроль" (People's Control) into a modern ful
 | `/profile` | Yes | User profile |
 | `/admin` | Yes (admin) | Admin panel |
 
-## Prioritized Backlog
-
-### P0 — People's Councils System
-Hierarchical councils (Yard → District → City → Republic → Country) with discussions, voting, budgets
-
-### P1 — Public Sector Reviews + Statistics Dashboard
-Reviews for government services/officials + public analytics
-
-### P2 — Future
-- AI problem classification, Petitions, SOS button
-- Business features (QR codes, verified accounts)
-- Multi-language, accessibility, offline
-- Telegram bot, District chats, Voice reviews
-- Public org pages (SEO), Impact dashboard
-- Refactoring server.py into modules
+## Backlog
+- **P0:** People's Councils System
+- **P1:** Public Sector Reviews + Statistics Dashboard
+- **P2:** AI classification, Petitions, SOS, Telegram bot, District chats, Business features

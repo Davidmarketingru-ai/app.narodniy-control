@@ -1,80 +1,76 @@
 # Народный Контроль — Product Requirements Document
 
 ## Original Problem Statement
-Rebuild a React Native application "Народный Контроль" (People's Control) into a modern full-stack web application using Python (FastAPI), React, and MongoDB. The platform enables civic engagement through verified community reviews, news feeds, problem mapping, and eventually a hierarchical People's Councils system.
+Rebuild "Народный Контроль" (People's Control) into a modern full-stack web platform for civic engagement using FastAPI, React, MongoDB.
 
-## Core Architecture
-- **Frontend:** React.js + Tailwind CSS + Shadcn/UI + Leaflet + Framer Motion
-- **Backend:** FastAPI + Motor (async MongoDB) + Pydantic
+## Architecture
+- **Frontend:** React.js + Tailwind CSS + Leaflet + Framer Motion + Shadcn/UI
+- **Backend:** FastAPI + Motor (async MongoDB)
+- **Auth:** Emergent-managed Google OAuth
 - **Database:** MongoDB
-- **Auth:** Emergent-managed Google OAuth (custom callback flow)
-- **Fonts:** Manrope + JetBrains Mono
 
-## What's Been Implemented
+## Implemented Features
 
-### Phase 1 — Core (Complete)
-- Google Auth with session management
-- User profiles with points/rating system (7 tiers: Новичок → Легенда)
-- Organizations CRUD with map display (Leaflet)
-- Review lifecycle: create → verify (2 confirmations) → approve/expire
-- Admin panel: review moderation, user management, stats
-- Notifications system
-- Rewards/shop with age-group targeting
-- Referral program (+50/+25 points)
-- File uploads (images/video)
-- PWA support
-- Rating leaderboard
+### Phase 1 — Core
+- Google Auth, user profiles, points/rating (7 tiers)
+- Organizations CRUD + Leaflet map
+- Review lifecycle: create → 2 verifications → approve/expire
+- Admin panel (moderation, users, stats)
+- Notifications, Rewards/shop, Referral program, File uploads, PWA, Leaderboard
 
-### Phase 2 — Feature Expansion (Complete — Feb 23, 2026)
-- **News Feed** (`/news`): Multi-level (yard→world) news with categories, likes, comments, urgency flag
-- **Info Widgets** (`/widgets`): Weather (open-meteo), Currency rates (CBR), Magnetic storms (NOAA), UV index
-- **Problems Map** (`/problems-map`): Leaflet map with color-coded markers by status
-- **Identity Verification** (`/verification`): Phone, Passport, Bank ID, Yandex ID — 3 levels
+### Phase 2 — Feature Expansion
+- News Feed (`/news`): multi-level, categories, likes, comments
+- Info Widgets (`/widgets`): weather, currency, magnetic storms, UV
+- Problems Map (`/problems-map`): color-coded markers, filters
+- Identity Verification (`/verification`): phone, passport, bank ID, Yandex ID
 
-### Phase 3 — Legal Compliance & Support (Complete — Mar 10, 2026)
-- **Support Ticket System** (`/support`): FAQ (8 items), ticket creation with 6 categories (bug, complaint, suggestion, question, rights_violation, other), replies, status management (open/in_progress/resolved/closed), priority system, admin ticket management
-- **Terms of Service** (`/terms`): Full 9-section user agreement with placeholder legal entity data, references to ГК РФ, УК РФ ст.128.1, КоАП ст.5.61, ФЗ-282, ФЗ-38
-- **Privacy Policy** (`/privacy`): Full 9-section policy compliant with 152-ФЗ, references to Роскомнадзор, DPO contact, data storage on RF territory
-- **Consent System**: Mandatory checkboxes on login (terms acceptance + age 16+ per ФЗ-436), consent recorded in user profile with timestamp and IP
-- **Cookie Banner**: Persistent cookie consent notification with localStorage tracking
-- **Legal Info API**: `/api/legal/info` returns operator details (placeholder ИНН, ОГРН, address)
+### Phase 3 — Legal Compliance & Support
+- Support ticket system (`/support`): FAQ, 6 categories, replies, admin management
+- Terms of Service (`/terms`), Privacy Policy (`/privacy`) — 152-FZ, 436-FZ compliant
+- Consent checkboxes on login (terms + age 16+), Cookie banner
+- Legal info API (`/api/legal/info`)
 
-## Key Pages & Routes
+### Phase 4 — Quick Wins / User Engagement (Complete — Apr 2, 2026)
+- **Interactive Onboarding** (3 steps + 20 bonus points)
+- **Verification Feed** (`/verify`): pending reviews sorted by expiry, excludes own/already-verified
+- **Social Sharing**: Telegram/VK/WhatsApp share buttons + copy link on reviews
+- **Adaptive Verification Timer**: 72h (<50 users) → 48h → 24h → 12h (1000+)
+- **Daily Missions + Streak**: 3 daily tasks (verify/read_news/visit_map), streak counter with x1.5 bonus at 7+ days
+- **OG Meta Tags**: social sharing preview for links
+- **Dashboard Redesign**: 3 quick action cards + daily missions widget
+
+## Routes
 | Route | Auth | Description |
 |-------|------|-------------|
-| `/login` | No | Login with consent checkboxes |
+| `/login` | No | Login with consent |
 | `/terms` | No | User agreement |
 | `/privacy` | No | Privacy policy |
-| `/dashboard` | Yes | Main dashboard |
+| `/dashboard` | Yes | Main + missions + onboarding |
 | `/news` | Yes | News feed |
-| `/widgets` | Yes | Weather, currency, magnetic |
+| `/verify` | Yes | Verification feed |
+| `/widgets` | Yes | Weather/currency/magnetic |
 | `/problems-map` | Yes | Problems map |
 | `/map` | Yes | Organizations map |
 | `/create` | Yes | Create review |
 | `/rewards` | Yes | Rewards shop |
 | `/verification` | Yes | Identity verification |
-| `/support` | Yes | Support tickets + FAQ |
+| `/support` | Yes | Support tickets |
 | `/notifications` | Yes | Notifications |
 | `/profile` | Yes | User profile |
 | `/admin` | Yes (admin) | Admin panel |
 
 ## Prioritized Backlog
 
-### P0 — System of People's Councils
-Hierarchical council system (Yard → District → City → Republic → Country) with:
-- Discussion forums, Voting mechanisms, Budget management, Member approval workflows
+### P0 — People's Councils System
+Hierarchical councils (Yard → District → City → Republic → Country) with discussions, voting, budgets
 
-### P1 — Reviews for Public Sector
-- Extend reviews to government services (hospitals, schools, police)
-- Rate individual officials
+### P1 — Public Sector Reviews + Statistics Dashboard
+Reviews for government services/officials + public analytics
 
-### P1 — Statistics Dashboard
-- Public analytics: city/district ratings, solved vs unsolved problems
-
-### P2 — Future Features
-- AI-powered problem classification and routing
-- Petitions system with escalation
-- SOS emergency button
+### P2 — Future
+- AI problem classification, Petitions, SOS button
 - Business features (QR codes, verified accounts)
-- Multi-language support, accessibility, offline mode
-- Refactoring server.py into modular APIRouter structure
+- Multi-language, accessibility, offline
+- Telegram bot, District chats, Voice reviews
+- Public org pages (SEO), Impact dashboard
+- Refactoring server.py into modules

@@ -3,7 +3,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home, Map, PlusCircle, Bell, User, Award, Shield,
-  Menu, X, LogOut, Star, ShieldAlert, Newspaper, LayoutGrid, MapPin, ShieldCheck, HelpCircle
+  Menu, X, LogOut, Star, ShieldAlert, Newspaper, LayoutGrid, MapPin, ShieldCheck, HelpCircle, CheckSquare
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationsApi } from '../lib/api';
@@ -11,6 +11,7 @@ import { notificationsApi } from '../lib/api';
 const navItems = [
   { to: '/dashboard', label: 'Главная', icon: Home },
   { to: '/news', label: 'Новости', icon: Newspaper },
+  { to: '/verify', label: 'Проверить', icon: CheckSquare },
   { to: '/widgets', label: 'Инфо', icon: LayoutGrid },
   { to: '/problems-map', label: 'Проблемы', icon: MapPin },
   { to: '/map', label: 'Карта', icon: Map },

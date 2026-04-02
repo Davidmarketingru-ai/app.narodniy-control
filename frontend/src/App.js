@@ -21,6 +21,7 @@ import VerificationPage from './pages/VerificationPage';
 import SupportPage from './pages/SupportPage';
 import TermsPage from './pages/TermsPage';
 import PrivacyPage from './pages/PrivacyPage';
+import VerifyFeedPage from './pages/VerifyFeedPage';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children }) {
@@ -69,6 +70,7 @@ function AppRouter() {
       <Route path="/problems-map" element={<ProtectedRoute><ProblemsMapPage /></ProtectedRoute>} />
       <Route path="/verification" element={<ProtectedRoute><VerificationPage /></ProtectedRoute>} />
       <Route path="/support" element={<ProtectedRoute><SupportPage /></ProtectedRoute>} />
+      <Route path="/verify" element={<ProtectedRoute><VerifyFeedPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

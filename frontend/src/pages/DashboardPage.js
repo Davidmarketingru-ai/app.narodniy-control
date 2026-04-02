@@ -3,10 +3,12 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { 
   Star, Clock, CheckCircle2, XCircle, ChevronRight, 
-  TrendingUp, Award, Plus, MapPin, ArrowRight, Timer
+  TrendingUp, Award, Plus, MapPin, ArrowRight, Timer, ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { reviewsApi } from '../lib/api';
+import OnboardingModal from '../components/OnboardingModal';
+import { DailyMissions } from '../components/DailyMissions';
 
 const statusConfig = {
   approved: { label: 'Верифицирован', color: 'text-emerald-400', bg: 'bg-emerald-500/10', glow: 'glow-green', icon: CheckCircle2 },
@@ -76,6 +78,8 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6" data-testid="dashboard-page">
+      <OnboardingModal />
+
       {/* Header */}
       <div>
         <motion.h1
@@ -137,7 +141,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link to="/create" data-testid="quick-create-review">
           <motion.div
             whileHover={{ scale: 1.02 }}
@@ -157,7 +161,7 @@ export default function DashboardPage() {
           </motion.div>
         </Link>
 
-        <Link to="/map" data-testid="quick-view-map">
+        <Link to="/verify" data-testid="quick-verify">
           <motion.div
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
@@ -165,17 +169,39 @@ export default function DashboardPage() {
           >
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-                <MapPin className="w-6 h-6 text-emerald-400" />
+                <ShieldCheck className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground">Помочь проверить</h3>
+                <p className="text-sm text-muted-foreground">+5 баллов за каждый</p>
+              </div>
+            </div>
+            <ArrowRight className="w-5 h-5 text-emerald-400 group-hover:translate-x-1 transition-transform" />
+          </motion.div>
+        </Link>
+
+        <Link to="/map" data-testid="quick-view-map">
+          <motion.div
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-6 flex items-center justify-between group cursor-pointer hover:bg-blue-500/15 transition-all"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                <MapPin className="w-6 h-6 text-blue-400" />
               </div>
               <div>
                 <h3 className="font-semibold text-foreground">Карта заведений</h3>
                 <p className="text-sm text-muted-foreground">Смотреть на карте</p>
               </div>
             </div>
-            <ArrowRight className="w-5 h-5 text-emerald-400 group-hover:translate-x-1 transition-transform" />
+            <ArrowRight className="w-5 h-5 text-blue-400 group-hover:translate-x-1 transition-transform" />
           </motion.div>
         </Link>
       </div>
+
+      {/* Daily Missions */}
+      <DailyMissions />
 
       {/* Reviews Feed */}
       <div>

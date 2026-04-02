@@ -325,6 +325,23 @@ async def list_reviews(status: Optional[str] = None, org_id: Optional[str] = Non
     reviews = await db.reviews.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
     return [ReviewOut(**r) for r in reviews]
 
+# ==================== Verification Feed ====================
+@api_router.get("/reviews/pending-verification")
+async def pending_verification_feed(request: Request, limit: int = 20):
+    user = await require_user(request)
+    already_verified = await db.verifications.find(
+        {"user_id": user["user_id"]}, {"review_id": 1, "_id": 0}
+    ).to_list(1000)
+    verified_ids = [v["review_id"] for v in already_verified]
+    query = {
+        "status": "pending",
+        "user_id": {"$ne": user["user_id"]},
+    }
+    if verified_ids:
+        query["review_id"] = {"$nin": verified_ids}
+    reviews = await db.reviews.find(query, {"_id": 0}).sort("expires_at", 1).to_list(limit)
+    return reviews
+
 @api_router.get("/reviews/{review_id}", response_model=ReviewOut)
 async def get_review(review_id: str):
     review = await db.reviews.find_one({"review_id": review_id}, {"_id": 0})
@@ -340,6 +357,16 @@ async def create_review(request: Request, review: ReviewCreate):
         raise HTTPException(status_code=404, detail="Organization not found")
     review_id = f"rev_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc)
+    # Adaptive timer based on active user count
+    active_users = await db.users.count_documents({})
+    if active_users < 50:
+        expiry_hours = 72
+    elif active_users < 200:
+        expiry_hours = 48
+    elif active_users < 1000:
+        expiry_hours = 24
+    else:
+        expiry_hours = 12
     doc = {
         "review_id": review_id,
         "user_id": user["user_id"],
@@ -358,7 +385,7 @@ async def create_review(request: Request, review: ReviewCreate):
         "longitude": review.longitude,
         "points_awarded": 0,
         "created_at": now.isoformat(),
-        "expires_at": (now + timedelta(hours=24)).isoformat()
+        "expires_at": (now + timedelta(hours=expiry_hours)).isoformat()
     }
     await db.reviews.insert_one(doc)
     await db.organizations.update_one({"org_id": review.org_id}, {"$inc": {"review_count": 1}})
@@ -1007,6 +1034,7 @@ async def seed_data():
     await db.support_tickets.create_index("user_id")
     await db.support_tickets.create_index("ticket_id", unique=True)
     await db.support_tickets.create_index([("status", 1), ("updated_at", -1)])
+    await db.daily_missions.create_index([("user_id", 1), ("date", 1)])
 
     # Seed news
     news_count = await db.news.count_documents({})
@@ -1204,6 +1232,122 @@ async def get_legal_info():
         "data_protection_officer": "Иванов Иван Иванович",
         "dpo_email": "dpo@narodkontrol.ru",
     }
+
+# ==================== Onboarding ====================
+@api_router.get("/onboarding/status")
+async def get_onboarding_status(request: Request):
+    user = await require_user(request)
+    return {
+        "completed": user.get("onboarding_completed", False),
+        "step": user.get("onboarding_step", 0),
+    }
+
+@api_router.post("/onboarding/complete")
+async def complete_onboarding(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    step = body.get("step", 0)
+    completed = body.get("completed", False)
+    update = {"onboarding_step": step}
+    if completed:
+        update["onboarding_completed"] = True
+        if not user.get("onboarding_completed"):
+            await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": 20}})
+            await create_notification(user["user_id"], "points_earned", "Бонус за знакомство!", "Вы получили 20 баллов за прохождение обучения")
+    await db.users.update_one({"user_id": user["user_id"]}, {"$set": update})
+    return {"success": True}
+
+# ==================== Verification Feed ====================
+# ==================== Daily Missions & Streak ====================
+DAILY_MISSION_TEMPLATES = [
+    {"type": "verify", "title": "Подтвердите 2 отзыва", "description": "Помогите другим пользователям", "target": 2, "reward": 10, "icon": "shield-check"},
+    {"type": "read_news", "title": "Прочитайте 3 новости", "description": "Будьте в курсе событий", "target": 3, "reward": 5, "icon": "newspaper"},
+    {"type": "visit_map", "title": "Посетите карту проблем", "description": "Узнайте о проблемах рядом", "target": 1, "reward": 3, "icon": "map-pin"},
+]
+
+@api_router.get("/missions/daily")
+async def get_daily_missions(request: Request):
+    user = await require_user(request)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    missions = await db.daily_missions.find(
+        {"user_id": user["user_id"], "date": today}, {"_id": 0}
+    ).to_list(10)
+    if not missions:
+        missions = []
+        for tmpl in DAILY_MISSION_TEMPLATES:
+            m = {
+                "mission_id": f"mission_{uuid.uuid4().hex[:8]}",
+                "user_id": user["user_id"],
+                "date": today,
+                "type": tmpl["type"],
+                "title": tmpl["title"],
+                "description": tmpl["description"],
+                "target": tmpl["target"],
+                "progress": 0,
+                "reward": tmpl["reward"],
+                "icon": tmpl["icon"],
+                "claimed": False,
+            }
+            missions.append(m)
+        await db.daily_missions.insert_many([{**m} for m in missions])
+    streak = user.get("streak_days", 0)
+    last_active = user.get("last_active_date", "")
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    if last_active == today:
+        pass
+    elif last_active == yesterday:
+        streak += 1
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"streak_days": streak, "last_active_date": today}})
+    else:
+        streak = 1
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"streak_days": streak, "last_active_date": today}})
+    return {"missions": missions, "streak": streak, "date": today}
+
+@api_router.post("/missions/{mission_id}/progress")
+async def update_mission_progress(request: Request, mission_id: str):
+    user = await require_user(request)
+    body = await request.json()
+    increment = body.get("increment", 1)
+    mission = await db.daily_missions.find_one(
+        {"mission_id": mission_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not mission:
+        raise HTTPException(status_code=404, detail="Миссия не найдена")
+    new_progress = min(mission["progress"] + increment, mission["target"])
+    await db.daily_missions.update_one(
+        {"mission_id": mission_id},
+        {"$set": {"progress": new_progress}}
+    )
+    return {"progress": new_progress, "target": mission["target"], "completed": new_progress >= mission["target"]}
+
+@api_router.post("/missions/{mission_id}/claim")
+async def claim_mission_reward(request: Request, mission_id: str):
+    user = await require_user(request)
+    mission = await db.daily_missions.find_one(
+        {"mission_id": mission_id, "user_id": user["user_id"]}, {"_id": 0}
+    )
+    if not mission:
+        raise HTTPException(status_code=404, detail="Миссия не найдена")
+    if mission["claimed"]:
+        raise HTTPException(status_code=400, detail="Награда уже получена")
+    if mission["progress"] < mission["target"]:
+        raise HTTPException(status_code=400, detail="Миссия не выполнена")
+    reward = mission["reward"]
+    streak = user.get("streak_days", 1)
+    bonus = reward if streak < 7 else int(reward * 1.5)
+    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": bonus}})
+    await db.daily_missions.update_one({"mission_id": mission_id}, {"$set": {"claimed": True}})
+    await create_notification(user["user_id"], "points_earned", "Миссия выполнена!",
+        f'+{bonus} баллов за "{mission["title"]}"' + (f' (x1.5 за серию {streak} дней!)' if streak >= 7 else ''))
+    return {"success": True, "reward": bonus, "streak_bonus": streak >= 7}
+
+# ==================== Public Review (for sharing) ====================
+@api_router.get("/reviews/{review_id}/public")
+async def get_public_review(review_id: str):
+    review = await db.reviews.find_one({"review_id": review_id, "status": "approved"}, {"_id": 0})
+    if not review:
+        raise HTTPException(status_code=404, detail="Отзыв не найден или не опубликован")
+    return review
 
 # ==================== Health ====================
 @api_router.get("/")

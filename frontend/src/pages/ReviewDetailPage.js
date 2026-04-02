@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { reviewsApi, verificationsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { ShareButton } from '../components/ShareButton';
 
 const statusConfig = {
   approved: { label: 'Верифицирован', color: 'text-emerald-400', bg: 'bg-emerald-500/10', icon: CheckCircle2 },
@@ -119,6 +120,13 @@ export default function ReviewDetailPage() {
             <span className="text-xs text-muted-foreground font-mono">
               {new Date(review.created_at).toLocaleDateString('ru-RU')}
             </span>
+            <div className="ml-auto">
+              <ShareButton
+                title={review.title}
+                text={`${review.title} — ${review.org_name} | Народный Контроль`}
+                url={`${window.location.origin}/reviews/${review.review_id}`}
+              />
+            </div>
           </div>
         </div>
 

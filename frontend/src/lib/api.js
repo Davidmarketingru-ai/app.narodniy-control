@@ -101,4 +101,19 @@ export const mapApi = {
   problems: () => api.get('/map/problems').then(r => r.data),
 };
 
+export const onboardingApi = {
+  status: () => api.get('/onboarding/status').then(r => r.data),
+  complete: (data) => api.post('/onboarding/complete', data).then(r => r.data),
+};
+
+export const missionsApi = {
+  daily: () => api.get('/missions/daily').then(r => r.data),
+  progress: (id, increment = 1) => api.post(`/missions/${id}/progress`, { increment }).then(r => r.data),
+  claim: (id) => api.post(`/missions/${id}/claim`).then(r => r.data),
+};
+
+export const verifyFeedApi = {
+  pending: () => api.get('/reviews/pending-verification').then(r => r.data),
+};
+
 export default api;

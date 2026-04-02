@@ -933,7 +933,7 @@ async def search_locations(q: str = ""):
 @api_router.get("/map/problems")
 async def get_problems_map():
     reviews = await db.reviews.find(
-        {"latitude": {"$exists": True}, "longitude": {"$exists": True}},
+        {"latitude": {"$ne": None}, "longitude": {"$ne": None}},
         {"_id": 0, "review_id": 1, "title": 1, "status": 1, "rating": 1,
          "latitude": 1, "longitude": 1, "org_name": 1, "created_at": 1,
          "verification_count": 1}

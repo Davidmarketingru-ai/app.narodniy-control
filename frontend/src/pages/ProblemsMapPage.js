@@ -63,6 +63,7 @@ export default function ProblemsMapPage() {
         <MapContainer center={[43.023, 44.682]} zoom={13} className="w-full h-full" zoomControl={false}>
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
           {filtered.map(p => {
+            if (p.latitude == null || p.longitude == null) return null;
             const cfg = statusConfig[p.status] || statusConfig.pending;
             return (
               <CircleMarker

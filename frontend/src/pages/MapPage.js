@@ -112,7 +112,9 @@ export default function MapPage() {
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             attribution='&copy; OpenStreetMap'
           />
-          {filtered.map(org => (
+          {filtered.map(org => {
+            if (org.latitude == null || org.longitude == null) return null;
+            return (
             <Marker
               key={org.org_id}
               position={[org.latitude, org.longitude]}
@@ -133,7 +135,8 @@ export default function MapPage() {
                 </div>
               </Popup>
             </Marker>
-          ))}
+            );
+          })}
         </MapContainer>
 
         {/* Floating legend */}

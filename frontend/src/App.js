@@ -43,18 +43,23 @@ function ProtectedRoute({ children }) {
 }
 
 function AppRouter() {
-  // useLocation triggers re-renders on route changes
   useLocation();
 
-  // REMINDER: DO NOT HARDCODE THE URL, OR ADD ANY FALLBACKS OR REDIRECT URLS, THIS BREAKS THE AUTH
-  // Check URL fragment for session_id — use window.location.hash for reliability
-  if (window.location.hash?.includes('session_id=')) {
-    return <AuthCallback />;
+  // Backward compatibility: if session_id is in hash on ANY page, redirect to callback
+  if (window.location.hash?.includes('session_id=') && !window.location.pathname.startsWith('/auth/callback')) {
+    const hash = window.location.hash;
+    window.location.replace('/auth/callback' + hash);
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
       <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />

@@ -249,7 +249,7 @@ async def auth_session(request: Request, response: Response):
     })
     response.set_cookie(
         key="session_token", value=session_token,
-        httponly=True, secure=True, samesite="lax",
+        httponly=True, secure=True, samesite="none",
         path="/", max_age=7*24*60*60
     )
     user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
@@ -268,7 +268,7 @@ async def auth_logout(request: Request, response: Response):
     session_token = request.cookies.get("session_token")
     if session_token:
         await db.user_sessions.delete_one({"session_token": session_token})
-    response.delete_cookie("session_token", path="/", secure=True, samesite="lax")
+    response.delete_cookie("session_token", path="/", secure=True, samesite="none")
     return {"success": True}
 
 # ==================== User/Profile Routes ====================

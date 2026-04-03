@@ -214,12 +214,16 @@ class GovReviewCreate(BaseModel):
 
 # ==================== People's Councils Models ====================
 COUNCIL_LEVELS = {
-    "yard": {"name": "Дворовый совет", "order": 1, "min_members": 3},
-    "district": {"name": "Районный совет", "order": 2, "min_members": 10},
-    "city": {"name": "Городской совет", "order": 3, "min_members": 25},
-    "republic": {"name": "Республиканский совет", "order": 4, "min_members": 50},
-    "country": {"name": "Народный совет страны", "order": 5, "min_members": 100},
+    "yard": {"name": "Дворовый совет", "order": 1, "min_members": 3, "reps": 10},
+    "village": {"name": "Сельский совет", "order": 2, "min_members": 5, "reps": 10},
+    "district": {"name": "Районный совет", "order": 2, "min_members": 10, "reps": 10},
+    "city": {"name": "Городской совет", "order": 3, "min_members": 25, "reps": 10},
+    "republic": {"name": "Республиканский совет", "order": 4, "min_members": 50, "reps": 10},
+    "okrug": {"name": "Совет федерального округа", "order": 5, "min_members": 50, "reps": 10},
+    "country": {"name": "Народный совет РФ", "order": 6, "min_members": 80, "reps": 10},
 }
+
+COUNCIL_CREATION_CONFIRMATIONS_REQUIRED = 10
 
 class CouncilCreate(BaseModel):
     name: str = Field(..., min_length=3)
@@ -228,6 +232,7 @@ class CouncilCreate(BaseModel):
     address: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    legal_consent: bool = False
 
 class DiscussionCreate(BaseModel):
     title: str = Field(..., min_length=5)
@@ -238,6 +243,11 @@ class VoteCreate(BaseModel):
     title: str = Field(..., min_length=5)
     description: str = Field(..., min_length=10)
     options: List[str] = Field(..., min_length=2, max_length=10)
+
+class CouncilNewsCreate(BaseModel):
+    title: str = Field(..., min_length=5)
+    content: str = Field(..., min_length=20)
+    repost_from: Optional[str] = None
 
 # ==================== Auth Helpers ====================
 async def get_current_user(request: Request) -> Optional[dict]:
@@ -1524,6 +1534,8 @@ async def create_council(request: Request, data: CouncilCreate):
     user = await require_user(request)
     if data.level not in COUNCIL_LEVELS:
         raise HTTPException(status_code=400, detail="Неверный уровень совета")
+    if not data.legal_consent:
+        raise HTTPException(status_code=400, detail="Необходимо принять юридическое соглашение")
     cid = f"council_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
     await db.councils.insert_one({
@@ -1531,19 +1543,59 @@ async def create_council(request: Request, data: CouncilCreate):
         "description": data.description, "address": data.address or "",
         "latitude": data.latitude, "longitude": data.longitude,
         "created_by": user["user_id"], "creator_name": user.get("name", ""),
-        "members": [{"user_id": user["user_id"], "name": user.get("name", ""), "role": "chairman", "joined_at": now}],
-        "member_count": 1, "discussion_count": 0, "vote_count": 0,
-        "status": "active", "created_at": now,
+        "members": [{"user_id": user["user_id"], "name": user.get("name", ""), "role": "chairman", "joined_at": now, "points": user.get("points", 0)}],
+        "member_count": 1,
+        "representatives": [],
+        "rep_count": 0,
+        "confirmations": [],
+        "confirmations_needed": COUNCIL_CREATION_CONFIRMATIONS_REQUIRED,
+        "confirmed": False,
+        "discussion_count": 0, "vote_count": 0, "news_count": 0,
+        "parent_council_id": None,
+        "child_council_ids": [],
+        "status": "pending_confirmation",
+        "created_at": now,
+        "legal_consent_by": user["user_id"],
+        "legal_consent_at": now,
     })
-    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": 15}})
     council = await db.councils.find_one({"council_id": cid}, {"_id": 0})
     return council
 
+@api_router.post("/councils/{council_id}/confirm")
+async def confirm_council_creation(request: Request, council_id: str):
+    user = await require_user(request)
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    if council.get("confirmed"):
+        raise HTTPException(status_code=400, detail="Совет уже подтверждён")
+    # Check user verification level
+    v_status = await db.verification_status.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if not v_status or v_status.get("level", 0) < 2:
+        raise HTTPException(status_code=403, detail="Только верифицированные пользователи (уровень 2+, паспорт) могут подтверждать создание советов")
+    if any(c["user_id"] == user["user_id"] for c in council.get("confirmations", [])):
+        raise HTTPException(status_code=400, detail="Вы уже подтвердили этот совет")
+    if council["created_by"] == user["user_id"]:
+        raise HTTPException(status_code=400, detail="Создатель не может подтвердить свой совет")
+    now = datetime.now(timezone.utc).isoformat()
+    conf = {"user_id": user["user_id"], "name": user.get("name", ""), "confirmed_at": now}
+    new_count = len(council.get("confirmations", [])) + 1
+    update = {"$push": {"confirmations": conf}}
+    if new_count >= COUNCIL_CREATION_CONFIRMATIONS_REQUIRED:
+        update["$set"] = {"confirmed": True, "status": "active", "confirmed_at": now}
+    await db.councils.update_one({"council_id": council_id}, update)
+    updated = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    return updated
+
 @api_router.get("/councils")
-async def list_councils(level: Optional[str] = None):
-    query = {"status": "active"}
+async def list_councils(level: Optional[str] = None, status: Optional[str] = None):
+    query = {}
     if level:
         query["level"] = level
+    if status:
+        query["status"] = status
+    else:
+        query["status"] = {"$in": ["active", "pending_confirmation"]}
     councils = await db.councils.find(query, {"_id": 0}).sort("member_count", -1).to_list(100)
     return councils
 
@@ -1564,7 +1616,7 @@ async def join_council(request: Request, council_id: str):
         raise HTTPException(status_code=400, detail="Вы уже участник совета")
     now = datetime.now(timezone.utc).isoformat()
     await db.councils.update_one({"council_id": council_id}, {
-        "$push": {"members": {"user_id": user["user_id"], "name": user.get("name", ""), "role": "member", "joined_at": now}},
+        "$push": {"members": {"user_id": user["user_id"], "name": user.get("name", ""), "role": "member", "joined_at": now, "points": user.get("points", 0)}},
         "$inc": {"member_count": 1}
     })
     await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": 5}})
@@ -1580,13 +1632,112 @@ async def leave_council(request: Request, council_id: str):
     if not member:
         raise HTTPException(status_code=400, detail="Вы не участник совета")
     if member["role"] == "chairman":
-        raise HTTPException(status_code=400, detail="Председатель не может покинуть совет. Передайте полномочия.")
+        raise HTTPException(status_code=400, detail="Председатель не может покинуть совет")
     await db.councils.update_one({"council_id": council_id}, {
-        "$pull": {"members": {"user_id": user["user_id"]}},
+        "$pull": {"members": {"user_id": user["user_id"]}, "representatives": {"user_id": user["user_id"]}},
         "$inc": {"member_count": -1}
     })
     return {"success": True}
 
+# ==================== Council Representatives ====================
+@api_router.post("/councils/{council_id}/nominate")
+async def nominate_representative(request: Request, council_id: str):
+    user = await require_user(request)
+    body = await request.json()
+    nominee_id = body.get("user_id", "")
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    if not any(m["user_id"] == user["user_id"] for m in council.get("members", [])):
+        raise HTTPException(status_code=403, detail="Только участники могут номинировать")
+    nominee = next((m for m in council.get("members", []) if m["user_id"] == nominee_id), None)
+    if not nominee:
+        raise HTTPException(status_code=400, detail="Номинант не является участником совета")
+    # Check nominee has no bans
+    nominee_user = await db.users.find_one({"user_id": nominee_id}, {"_id": 0})
+    if nominee_user and nominee_user.get("banned"):
+        raise HTTPException(status_code=400, detail="Пользователь заблокирован")
+    existing = await db.council_nominations.find_one({
+        "council_id": council_id, "nominee_id": nominee_id, "voter_id": user["user_id"]
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="Вы уже голосовали за этого кандидата")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.council_nominations.insert_one({
+        "council_id": council_id, "nominee_id": nominee_id,
+        "nominee_name": nominee.get("name", ""),
+        "voter_id": user["user_id"], "voter_name": user.get("name", ""),
+        "created_at": now,
+    })
+    # Count votes for this nominee
+    vote_count = await db.council_nominations.count_documents({"council_id": council_id, "nominee_id": nominee_id})
+    return {"success": True, "nominee_votes": vote_count}
+
+@api_router.get("/councils/{council_id}/nominations")
+async def get_nominations(council_id: str):
+    pipeline = [
+        {"$match": {"council_id": council_id}},
+        {"$group": {"_id": "$nominee_id", "name": {"$first": "$nominee_name"}, "votes": {"$sum": 1}}},
+        {"$sort": {"votes": -1}},
+        {"$limit": 20},
+    ]
+    results = await db.council_nominations.aggregate(pipeline).to_list(20)
+    for r in results:
+        r["user_id"] = r.pop("_id")
+        u = await db.users.find_one({"user_id": r["user_id"]}, {"_id": 0, "points": 1, "rating_status": 1})
+        r["points"] = u.get("points", 0) if u else 0
+        r["rating_status"] = u.get("rating_status", "Новичок") if u else "Новичок"
+    return results
+
+@api_router.post("/councils/{council_id}/elect-representatives")
+async def elect_representatives(request: Request, council_id: str):
+    user = await require_user(request)
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    member = next((m for m in council.get("members", []) if m["user_id"] == user["user_id"]), None)
+    if not member or member["role"] != "chairman":
+        raise HTTPException(status_code=403, detail="Только председатель может провести выборы")
+    pipeline = [
+        {"$match": {"council_id": council_id}},
+        {"$group": {"_id": "$nominee_id", "name": {"$first": "$nominee_name"}, "votes": {"$sum": 1}}},
+        {"$sort": {"votes": -1}},
+        {"$limit": 10},
+    ]
+    top = await db.council_nominations.aggregate(pipeline).to_list(10)
+    reps = []
+    for t in top:
+        reps.append({"user_id": t["_id"], "name": t["name"], "votes": t["votes"], "elected_at": datetime.now(timezone.utc).isoformat()})
+    await db.councils.update_one({"council_id": council_id}, {
+        "$set": {"representatives": reps, "rep_count": len(reps)}
+    })
+    # Update member roles
+    for rep in reps:
+        await db.councils.update_one(
+            {"council_id": council_id, "members.user_id": rep["user_id"]},
+            {"$set": {"members.$.role": "representative"}}
+        )
+    return {"representatives": reps}
+
+@api_router.post("/councils/{council_id}/complaint")
+async def file_rep_complaint(request: Request, council_id: str):
+    user = await require_user(request)
+    body = await request.json()
+    rep_id = body.get("representative_id", "")
+    reason = body.get("reason", "").strip()
+    if not reason or len(reason) < 10:
+        raise HTTPException(status_code=400, detail="Причина жалобы — минимум 10 символов")
+    now = datetime.now(timezone.utc).isoformat()
+    cid = f"complaint_{uuid.uuid4().hex[:8]}"
+    await db.council_complaints.insert_one({
+        "complaint_id": cid, "council_id": council_id,
+        "representative_id": rep_id, "complainant_id": user["user_id"],
+        "complainant_name": user.get("name", ""), "reason": reason,
+        "status": "open", "created_at": now,
+    })
+    return {"complaint_id": cid, "status": "open"}
+
+# ==================== Council Discussions ====================
 @api_router.post("/councils/{council_id}/discussions")
 async def create_discussion(request: Request, council_id: str, data: DiscussionCreate):
     user = await require_user(request)
@@ -1594,7 +1745,7 @@ async def create_discussion(request: Request, council_id: str, data: DiscussionC
     if not council:
         raise HTTPException(status_code=404, detail="Совет не найден")
     if not any(m["user_id"] == user["user_id"] for m in council.get("members", [])):
-        raise HTTPException(status_code=403, detail="Только участники совета могут создавать обсуждения")
+        raise HTTPException(status_code=403, detail="Только участники совета")
     did = f"disc_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
     await db.council_discussions.insert_one({
@@ -1627,6 +1778,7 @@ async def reply_to_discussion(request: Request, council_id: str, discussion_id: 
         {"$push": {"replies": reply}, "$inc": {"reply_count": 1}})
     return reply
 
+# ==================== Council Votes ====================
 @api_router.post("/councils/{council_id}/votes")
 async def create_vote(request: Request, council_id: str, data: VoteCreate):
     user = await require_user(request)
@@ -1634,8 +1786,8 @@ async def create_vote(request: Request, council_id: str, data: VoteCreate):
     if not council:
         raise HTTPException(status_code=404, detail="Совет не найден")
     member = next((m for m in council.get("members", []) if m["user_id"] == user["user_id"]), None)
-    if not member or member["role"] not in ["chairman", "moderator"]:
-        raise HTTPException(status_code=403, detail="Только председатель или модератор может создавать голосования")
+    if not member or member["role"] not in ["chairman", "representative"]:
+        raise HTTPException(status_code=403, detail="Только председатель или представитель может создавать голосования")
     vid = f"vote_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
     expires = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
@@ -1671,6 +1823,124 @@ async def cast_vote(request: Request, council_id: str, vote_id: str):
         {"vote_id": vote_id, "options.option_id": option_id},
         {"$inc": {"options.$.votes": 1, "total_votes": 1}, "$push": {"options.$.voters": user["user_id"]}}
     )
+    return {"success": True}
+
+# ==================== Council News + AI Moderation ====================
+@api_router.post("/councils/{council_id}/news")
+async def create_council_news(request: Request, council_id: str, data: CouncilNewsCreate):
+    user = await require_user(request)
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    is_rep = any(r["user_id"] == user["user_id"] for r in council.get("representatives", []))
+    member = next((m for m in council.get("members", []) if m["user_id"] == user["user_id"]), None)
+    is_chairman = member and member["role"] == "chairman"
+    if not is_rep and not is_chairman:
+        raise HTTPException(status_code=403, detail="Только представители или председатель могут публиковать новости")
+    nid = f"cnews_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    ai_result = await _ai_check_news(data.title, data.content)
+    status = "pending_moderation"
+    await db.council_news.insert_one({
+        "news_id": nid, "council_id": council_id, "council_name": council["name"],
+        "council_level": council["level"],
+        "author_id": user["user_id"], "author_name": user.get("name", ""),
+        "title": data.title, "content": data.content,
+        "repost_from": data.repost_from,
+        "status": status,
+        "ai_check": ai_result,
+        "admin_verified": False,
+        "created_at": now,
+    })
+    await db.councils.update_one({"council_id": council_id}, {"$inc": {"news_count": 1}})
+    news = await db.council_news.find_one({"news_id": nid}, {"_id": 0})
+    return news
+
+async def _ai_check_news(title: str, content: str) -> dict:
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
+        if not llm_key:
+            return {"checked": False, "reason": "AI ключ не настроен"}
+        chat = LlmChat(api_key=llm_key, model="gpt-4o-mini")
+        prompt = f"""Ты — модератор платформы гражданского контроля. Проверь следующую новость на достоверность.
+
+Заголовок: {title}
+Содержание: {content}
+
+Ответь строго в формате JSON:
+{{"credibility": "high"|"medium"|"low"|"fake", "issues": ["список проблем если есть"], "summary": "краткий вывод на русском", "recommendation": "approve"|"review"|"reject"}}
+
+Критерии:
+- "fake" если явная дезинформация
+- "low" если невозможно проверить или подозрительно
+- "medium" если частично верно но требует проверки
+- "high" если информация правдоподобна"""
+        response = await asyncio.to_thread(chat.messages.create, messages=[UserMessage(content=prompt)])
+        import json as jsonlib
+        text = response.content.strip()
+        if text.startswith("```"):
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+        return {"checked": True, "result": jsonlib.loads(text.strip())}
+    except Exception as e:
+        return {"checked": False, "reason": str(e)[:200]}
+
+@api_router.get("/councils/{council_id}/news")
+async def list_council_news(council_id: str):
+    news = await db.council_news.find({"council_id": council_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return news
+
+@api_router.put("/councils/{council_id}/news/{news_id}/moderate")
+async def moderate_council_news(request: Request, council_id: str, news_id: str):
+    user = await require_user(request)
+    if user.get("role") != "admin":
+        council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+        if not council:
+            raise HTTPException(status_code=404)
+        is_rep = any(r["user_id"] == user["user_id"] for r in council.get("representatives", []))
+        if not is_rep:
+            raise HTTPException(status_code=403, detail="Только представители или админы")
+    body = await request.json()
+    action = body.get("action", "")
+    if action == "approve":
+        await db.council_news.update_one({"news_id": news_id}, {"$set": {"status": "verified", "admin_verified": True, "moderated_by": user["user_id"]}})
+    elif action == "reject":
+        await db.council_news.update_one({"news_id": news_id}, {"$set": {"status": "rejected", "admin_verified": True, "moderated_by": user["user_id"], "reject_reason": body.get("reason", "")}})
+    elif action == "delete":
+        await db.council_news.delete_one({"news_id": news_id})
+        return {"deleted": True}
+    return {"success": True}
+
+@api_router.post("/councils/{council_id}/news/{news_id}/repost")
+async def repost_council_news(request: Request, council_id: str, news_id: str):
+    user = await require_user(request)
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404)
+    is_rep = any(r["user_id"] == user["user_id"] for r in council.get("representatives", []))
+    if not is_rep:
+        raise HTTPException(status_code=403, detail="Только представители могут делать репосты")
+    original = await db.council_news.find_one({"news_id": news_id}, {"_id": 0})
+    if not original:
+        raise HTTPException(status_code=404)
+    body = await request.json()
+    target_council_id = body.get("target_council_id", "")
+    target = await db.councils.find_one({"council_id": target_council_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="Целевой совет не найден")
+    nid = f"cnews_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    await db.council_news.insert_one({
+        "news_id": nid, "council_id": target_council_id, "council_name": target["name"],
+        "council_level": target["level"],
+        "author_id": user["user_id"], "author_name": user.get("name", ""),
+        "title": f"[Репост] {original['title']}", "content": original["content"],
+        "repost_from": news_id, "original_council": original.get("council_name", ""),
+        "status": "verified", "ai_check": original.get("ai_check", {}),
+        "admin_verified": True, "created_at": now,
+    })
     return {"success": True}
 
 # ==================== Public Review (for sharing) ====================

@@ -3,7 +3,8 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home, Map, PlusCircle, Bell, User, Award, Shield,
-  Menu, X, LogOut, Star, ShieldAlert, Newspaper, LayoutGrid, MapPin, ShieldCheck, HelpCircle, CheckSquare
+  Menu, X, LogOut, Star, ShieldAlert, Newspaper, LayoutGrid, MapPin, ShieldCheck, HelpCircle, CheckSquare,
+  Building2, Users
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationsApi } from '../lib/api';
@@ -11,11 +12,13 @@ import { notificationsApi } from '../lib/api';
 const navItems = [
   { to: '/dashboard', label: 'Главная', icon: Home },
   { to: '/news', label: 'Новости', icon: Newspaper },
+  { to: '/councils', label: 'Советы', icon: Users },
+  { to: '/gov', label: 'Госслужащие', icon: Building2 },
   { to: '/verify', label: 'Проверить', icon: CheckSquare },
-  { to: '/widgets', label: 'Инфо', icon: LayoutGrid },
   { to: '/problems-map', label: 'Проблемы', icon: MapPin },
   { to: '/map', label: 'Карта', icon: Map },
   { to: '/create', label: 'Отзыв', icon: PlusCircle },
+  { to: '/widgets', label: 'Инфо', icon: LayoutGrid },
   { to: '/rewards', label: 'Награды', icon: Award },
   { to: '/verification', label: 'Верификация', icon: ShieldCheck },
   { to: '/support', label: 'Поддержка', icon: HelpCircle },
@@ -181,7 +184,7 @@ export default function AppLayout({ children }) {
 
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 glass border-t border-border/50 z-40 flex items-center justify-around px-2 py-2" data-testid="bottom-nav">
-        {[navItems[0], navItems[1], navItems[2], navItems[3], navItems[8]].map(item => {
+        {[navItems[0], navItems[1], navItems[2], navItems[3], navItems[12]].map(item => {
           const isActive = location.pathname === item.to || (item.to === '/dashboard' && location.pathname === '/');
           return (
             <NavLink

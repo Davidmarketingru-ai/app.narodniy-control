@@ -130,8 +130,8 @@ class ReviewCreate(BaseModel):
 
 class VerificationCreate(BaseModel):
     review_id: str
-    comment: Optional[str] = None
-    photos: List[str] = []
+    comment: str = Field(..., min_length=20)
+    photos: List[str] = Field(..., min_length=1)
 
 class NotificationOut(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -167,6 +167,77 @@ class ProfileUpdate(BaseModel):
     age_group: Optional[str] = None
     theme: Optional[str] = None
     text_scale: Optional[int] = None
+
+# ==================== Government Officials Models ====================
+BANNED_GOV_CATEGORIES = [
+    "fsb", "fso", "svr", "gru", "mindefense", "rosgvardia_spec",
+    "military", "intelligence", "counterintel", "special_forces",
+    "classified", "strategic_command", "nuclear", "cyber_command",
+]
+BANNED_GOV_KEYWORDS = [
+    "фсб", "фсо", "свр", "гру", "разведк", "контрразвед",
+    "спецслужб", "спецназ", "секретн", "минобороны", "генштаб",
+    "военн", "росгвардия", "нацгвардия", "ядерн", "стратегич",
+]
+
+ALLOWED_GOV_CATEGORIES = {
+    "healthcare": "Здравоохранение",
+    "education": "Образование",
+    "mfc": "МФЦ / Госуслуги",
+    "zags": "ЗАГС",
+    "tax": "Налоговая (ФНС)",
+    "court": "Суды",
+    "police_local": "Полиция (участковые)",
+    "gibdd": "ГИБДД",
+    "housing": "ЖКХ / Управление домом",
+    "administration": "Администрация",
+    "social": "Соцзащита",
+    "pension": "Пенсионный фонд",
+    "employment": "Служба занятости",
+    "transport": "Транспорт / Дорожные службы",
+    "ecology": "Экология / Природнадзор",
+}
+
+class GovOfficialCreate(BaseModel):
+    name: str = Field(..., min_length=2)
+    position: str = Field(..., min_length=3)
+    department: str = Field(..., min_length=3)
+    gov_category: str
+    region: Optional[str] = None
+
+class GovReviewCreate(BaseModel):
+    official_id: str
+    title: str = Field(..., min_length=5)
+    content: str = Field(..., min_length=20)
+    rating: int = Field(ge=1, le=5)
+    category: str = "service_quality"
+
+# ==================== People's Councils Models ====================
+COUNCIL_LEVELS = {
+    "yard": {"name": "Дворовый совет", "order": 1, "min_members": 3},
+    "district": {"name": "Районный совет", "order": 2, "min_members": 10},
+    "city": {"name": "Городской совет", "order": 3, "min_members": 25},
+    "republic": {"name": "Республиканский совет", "order": 4, "min_members": 50},
+    "country": {"name": "Народный совет страны", "order": 5, "min_members": 100},
+}
+
+class CouncilCreate(BaseModel):
+    name: str = Field(..., min_length=3)
+    level: str
+    description: str = Field(..., min_length=10)
+    address: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+class DiscussionCreate(BaseModel):
+    title: str = Field(..., min_length=5)
+    content: str = Field(..., min_length=20)
+    category: str = "general"
+
+class VoteCreate(BaseModel):
+    title: str = Field(..., min_length=5)
+    description: str = Field(..., min_length=10)
+    options: List[str] = Field(..., min_length=2, max_length=10)
 
 # ==================== Auth Helpers ====================
 async def get_current_user(request: Request) -> Optional[dict]:
@@ -399,12 +470,18 @@ async def create_verification(request: Request, verification: VerificationCreate
     user = await require_user(request)
     review = await db.reviews.find_one({"review_id": verification.review_id}, {"_id": 0})
     if not review:
-        raise HTTPException(status_code=404, detail="Review not found")
+        raise HTTPException(status_code=404, detail="Отзыв не найден")
     if review["user_id"] == user["user_id"]:
-        raise HTTPException(status_code=400, detail="Cannot verify own review")
+        raise HTTPException(status_code=400, detail="Нельзя подтвердить свой отзыв")
+    if review["status"] != "pending":
+        raise HTTPException(status_code=400, detail="Отзыв уже обработан")
     existing = await db.verifications.find_one({"review_id": verification.review_id, "user_id": user["user_id"]}, {"_id": 0})
     if existing:
-        raise HTTPException(status_code=400, detail="Already verified this review")
+        raise HTTPException(status_code=400, detail="Вы уже подтвердили этот отзыв")
+    if not verification.photos or len(verification.photos) < 1:
+        raise HTTPException(status_code=400, detail="Необходимо прикрепить минимум 1 фотографию как доказательство")
+    if not verification.comment or len(verification.comment.strip()) < 20:
+        raise HTTPException(status_code=400, detail="Комментарий должен содержать минимум 20 символов с описанием конкретного заведения")
     ver_id = f"ver_{uuid.uuid4().hex[:12]}"
     await db.verifications.insert_one({
         "verification_id": ver_id,
@@ -1035,6 +1112,16 @@ async def seed_data():
     await db.support_tickets.create_index("ticket_id", unique=True)
     await db.support_tickets.create_index([("status", 1), ("updated_at", -1)])
     await db.daily_missions.create_index([("user_id", 1), ("date", 1)])
+    await db.gov_officials.create_index("official_id", unique=True)
+    await db.gov_officials.create_index("gov_category")
+    await db.gov_reviews.create_index("official_id")
+    await db.gov_reviews.create_index("review_id", unique=True)
+    await db.councils.create_index("council_id", unique=True)
+    await db.councils.create_index("level")
+    await db.council_discussions.create_index("council_id")
+    await db.council_discussions.create_index("discussion_id", unique=True)
+    await db.council_votes.create_index("council_id")
+    await db.council_votes.create_index("vote_id", unique=True)
 
     # Seed news
     news_count = await db.news.count_documents({})
@@ -1222,15 +1309,15 @@ async def record_consent(request: Request):
 @api_router.get("/legal/info")
 async def get_legal_info():
     return {
-        "operator_name": "ООО «Народный Контроль»",
-        "inn": "0000000000",
-        "ogrn": "0000000000000",
-        "legal_address": "362000, РСО-Алания, г. Владикавказ, ул. Ленина, д. 1, оф. 100",
-        "email": "support@narodkontrol.ru",
-        "phone": "+7 (800) 000-00-00",
+        "operator_name": "ОсОО «Народный Контроль»",
+        "inn": "Регистрация в ПВТ Кыргызской Республики",
+        "ogrn": "",
+        "legal_address": "720000, Кыргызская Республика, г. Бишкек, Парк Высоких Технологий",
+        "email": "support@narodkontrol.kg",
+        "phone": "+996 (000) 00-00-00",
         "age_restriction": "16+",
-        "data_protection_officer": "Иванов Иван Иванович",
-        "dpo_email": "dpo@narodkontrol.ru",
+        "data_protection_officer": "Служба защиты данных платформы",
+        "dpo_email": "privacy@narodkontrol.kg",
     }
 
 # ==================== Onboarding ====================
@@ -1340,6 +1427,251 @@ async def claim_mission_reward(request: Request, mission_id: str):
     await create_notification(user["user_id"], "points_earned", "Миссия выполнена!",
         f'+{bonus} баллов за "{mission["title"]}"' + (f' (x1.5 за серию {streak} дней!)' if streak >= 7 else ''))
     return {"success": True, "reward": bonus, "streak_bonus": streak >= 7}
+
+# ==================== Government Officials System ====================
+def check_banned_gov(text: str) -> bool:
+    lower = text.lower()
+    return any(kw in lower for kw in BANNED_GOV_KEYWORDS)
+
+@api_router.get("/gov/categories")
+async def get_gov_categories():
+    return ALLOWED_GOV_CATEGORIES
+
+@api_router.post("/gov/officials")
+async def create_gov_official(request: Request, data: GovOfficialCreate):
+    user = await require_user(request)
+    if data.gov_category not in ALLOWED_GOV_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Недопустимая категория государственного органа")
+    for field in [data.name, data.position, data.department]:
+        if check_banned_gov(field):
+            raise HTTPException(status_code=403, detail="Отзывы о сотрудниках силовых структур, спецслужб и органов с грифом секретности запрещены в соответствии с законодательством РФ")
+    oid = f"gov_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    await db.gov_officials.insert_one({
+        "official_id": oid, "name": data.name, "position": data.position,
+        "department": data.department, "gov_category": data.gov_category,
+        "region": data.region or "", "created_by": user["user_id"],
+        "average_rating": 0, "review_count": 0, "created_at": now,
+    })
+    official = await db.gov_officials.find_one({"official_id": oid}, {"_id": 0})
+    return official
+
+@api_router.get("/gov/officials")
+async def list_gov_officials(category: Optional[str] = None, q: Optional[str] = None):
+    query = {}
+    if category:
+        query["gov_category"] = category
+    if q:
+        query["$or"] = [
+            {"name": {"$regex": q, "$options": "i"}},
+            {"department": {"$regex": q, "$options": "i"}},
+        ]
+    officials = await db.gov_officials.find(query, {"_id": 0}).sort("review_count", -1).to_list(100)
+    return officials
+
+@api_router.get("/gov/officials/{official_id}")
+async def get_gov_official(official_id: str):
+    official = await db.gov_officials.find_one({"official_id": official_id}, {"_id": 0})
+    if not official:
+        raise HTTPException(status_code=404, detail="Служащий не найден")
+    return official
+
+@api_router.post("/gov/reviews")
+async def create_gov_review(request: Request, data: GovReviewCreate):
+    user = await require_user(request)
+    official = await db.gov_officials.find_one({"official_id": data.official_id}, {"_id": 0})
+    if not official:
+        raise HTTPException(status_code=404, detail="Служащий не найден")
+    if check_banned_gov(data.content) or check_banned_gov(data.title):
+        raise HTTPException(status_code=403, detail="Контент содержит упоминания запрещённых структур")
+    rid = f"govrev_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    await db.gov_reviews.insert_one({
+        "review_id": rid, "official_id": data.official_id,
+        "official_name": official["name"], "department": official["department"],
+        "gov_category": official["gov_category"],
+        "user_id": user["user_id"], "user_name": user.get("name", ""),
+        "title": data.title, "content": data.content,
+        "rating": data.rating, "category": data.category,
+        "likes": 0, "created_at": now,
+    })
+    count = await db.gov_reviews.count_documents({"official_id": data.official_id})
+    pipeline = [{"$match": {"official_id": data.official_id}}, {"$group": {"_id": None, "avg": {"$avg": "$rating"}}}]
+    agg = await db.gov_reviews.aggregate(pipeline).to_list(1)
+    avg = round(agg[0]["avg"], 1) if agg else 0
+    await db.gov_officials.update_one({"official_id": data.official_id}, {"$set": {"review_count": count, "average_rating": avg}})
+    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": 8}})
+    review = await db.gov_reviews.find_one({"review_id": rid}, {"_id": 0})
+    return review
+
+@api_router.get("/gov/reviews")
+async def list_gov_reviews(official_id: Optional[str] = None, category: Optional[str] = None):
+    query = {}
+    if official_id:
+        query["official_id"] = official_id
+    if category:
+        query["gov_category"] = category
+    reviews = await db.gov_reviews.find(query, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return reviews
+
+# ==================== People's Councils ====================
+@api_router.get("/councils/levels")
+async def get_council_levels():
+    return COUNCIL_LEVELS
+
+@api_router.post("/councils")
+async def create_council(request: Request, data: CouncilCreate):
+    user = await require_user(request)
+    if data.level not in COUNCIL_LEVELS:
+        raise HTTPException(status_code=400, detail="Неверный уровень совета")
+    cid = f"council_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    await db.councils.insert_one({
+        "council_id": cid, "name": data.name, "level": data.level,
+        "description": data.description, "address": data.address or "",
+        "latitude": data.latitude, "longitude": data.longitude,
+        "created_by": user["user_id"], "creator_name": user.get("name", ""),
+        "members": [{"user_id": user["user_id"], "name": user.get("name", ""), "role": "chairman", "joined_at": now}],
+        "member_count": 1, "discussion_count": 0, "vote_count": 0,
+        "status": "active", "created_at": now,
+    })
+    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": 15}})
+    council = await db.councils.find_one({"council_id": cid}, {"_id": 0})
+    return council
+
+@api_router.get("/councils")
+async def list_councils(level: Optional[str] = None):
+    query = {"status": "active"}
+    if level:
+        query["level"] = level
+    councils = await db.councils.find(query, {"_id": 0}).sort("member_count", -1).to_list(100)
+    return councils
+
+@api_router.get("/councils/{council_id}")
+async def get_council(council_id: str):
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    return council
+
+@api_router.post("/councils/{council_id}/join")
+async def join_council(request: Request, council_id: str):
+    user = await require_user(request)
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    if any(m["user_id"] == user["user_id"] for m in council.get("members", [])):
+        raise HTTPException(status_code=400, detail="Вы уже участник совета")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.councils.update_one({"council_id": council_id}, {
+        "$push": {"members": {"user_id": user["user_id"], "name": user.get("name", ""), "role": "member", "joined_at": now}},
+        "$inc": {"member_count": 1}
+    })
+    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": 5}})
+    return {"success": True}
+
+@api_router.post("/councils/{council_id}/leave")
+async def leave_council(request: Request, council_id: str):
+    user = await require_user(request)
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    member = next((m for m in council.get("members", []) if m["user_id"] == user["user_id"]), None)
+    if not member:
+        raise HTTPException(status_code=400, detail="Вы не участник совета")
+    if member["role"] == "chairman":
+        raise HTTPException(status_code=400, detail="Председатель не может покинуть совет. Передайте полномочия.")
+    await db.councils.update_one({"council_id": council_id}, {
+        "$pull": {"members": {"user_id": user["user_id"]}},
+        "$inc": {"member_count": -1}
+    })
+    return {"success": True}
+
+@api_router.post("/councils/{council_id}/discussions")
+async def create_discussion(request: Request, council_id: str, data: DiscussionCreate):
+    user = await require_user(request)
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    if not any(m["user_id"] == user["user_id"] for m in council.get("members", [])):
+        raise HTTPException(status_code=403, detail="Только участники совета могут создавать обсуждения")
+    did = f"disc_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    await db.council_discussions.insert_one({
+        "discussion_id": did, "council_id": council_id, "council_name": council["name"],
+        "author_id": user["user_id"], "author_name": user.get("name", ""),
+        "title": data.title, "content": data.content, "category": data.category,
+        "replies": [], "reply_count": 0, "likes": 0, "created_at": now,
+    })
+    await db.councils.update_one({"council_id": council_id}, {"$inc": {"discussion_count": 1}})
+    await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": 3}})
+    disc = await db.council_discussions.find_one({"discussion_id": did}, {"_id": 0})
+    return disc
+
+@api_router.get("/councils/{council_id}/discussions")
+async def list_discussions(council_id: str):
+    discs = await db.council_discussions.find({"council_id": council_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return discs
+
+@api_router.post("/councils/{council_id}/discussions/{discussion_id}/reply")
+async def reply_to_discussion(request: Request, council_id: str, discussion_id: str):
+    user = await require_user(request)
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text or len(text) < 5:
+        raise HTTPException(status_code=400, detail="Минимум 5 символов")
+    now = datetime.now(timezone.utc).isoformat()
+    reply = {"reply_id": f"reply_{uuid.uuid4().hex[:8]}", "author_id": user["user_id"],
+             "author_name": user.get("name", ""), "text": text, "created_at": now}
+    await db.council_discussions.update_one({"discussion_id": discussion_id},
+        {"$push": {"replies": reply}, "$inc": {"reply_count": 1}})
+    return reply
+
+@api_router.post("/councils/{council_id}/votes")
+async def create_vote(request: Request, council_id: str, data: VoteCreate):
+    user = await require_user(request)
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    member = next((m for m in council.get("members", []) if m["user_id"] == user["user_id"]), None)
+    if not member or member["role"] not in ["chairman", "moderator"]:
+        raise HTTPException(status_code=403, detail="Только председатель или модератор может создавать голосования")
+    vid = f"vote_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    expires = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    options = [{"option_id": f"opt_{i}", "text": o, "votes": 0, "voters": []} for i, o in enumerate(data.options)]
+    await db.council_votes.insert_one({
+        "vote_id": vid, "council_id": council_id, "council_name": council["name"],
+        "author_id": user["user_id"], "author_name": user.get("name", ""),
+        "title": data.title, "description": data.description,
+        "options": options, "total_votes": 0,
+        "status": "active", "created_at": now, "expires_at": expires,
+    })
+    await db.councils.update_one({"council_id": council_id}, {"$inc": {"vote_count": 1}})
+    vote = await db.council_votes.find_one({"vote_id": vid}, {"_id": 0})
+    return vote
+
+@api_router.get("/councils/{council_id}/votes")
+async def list_votes(council_id: str):
+    votes = await db.council_votes.find({"council_id": council_id}, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return votes
+
+@api_router.post("/councils/{council_id}/votes/{vote_id}/cast")
+async def cast_vote(request: Request, council_id: str, vote_id: str):
+    user = await require_user(request)
+    body = await request.json()
+    option_id = body.get("option_id", "")
+    vote = await db.council_votes.find_one({"vote_id": vote_id}, {"_id": 0})
+    if not vote or vote["status"] != "active":
+        raise HTTPException(status_code=404, detail="Голосование не найдено или завершено")
+    for opt in vote["options"]:
+        if user["user_id"] in opt.get("voters", []):
+            raise HTTPException(status_code=400, detail="Вы уже проголосовали")
+    await db.council_votes.update_one(
+        {"vote_id": vote_id, "options.option_id": option_id},
+        {"$inc": {"options.$.votes": 1, "total_votes": 1}, "$push": {"options.$.voters": user["user_id"]}}
+    )
+    return {"success": True}
 
 # ==================== Public Review (for sharing) ====================
 @api_router.get("/reviews/{review_id}/public")

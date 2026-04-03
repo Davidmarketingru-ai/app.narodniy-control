@@ -3,9 +3,10 @@ import { useParams, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   Star, Clock, CheckCircle2, XCircle, MapPin, ArrowLeft, 
-  ShieldCheck, Send, Loader2, User, Timer
+  ShieldCheck, Send, Loader2, User, Timer, Camera, Upload, X
 } from 'lucide-react';
 import { reviewsApi, verificationsApi } from '../lib/api';
+import api from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { ShareButton } from '../components/ShareButton';
 
@@ -23,6 +24,8 @@ export default function ReviewDetailPage() {
   const [verifications, setVerifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [comment, setComment] = useState('');
+  const [verifyPhotos, setVerifyPhotos] = useState([]);
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [verifyError, setVerifyError] = useState('');
 
@@ -38,9 +41,17 @@ export default function ReviewDetailPage() {
 
   const handleVerify = async () => {
     setVerifyError('');
+    if (verifyPhotos.length === 0) {
+      setVerifyError('Прикрепите минимум 1 фото как доказательство посещения');
+      return;
+    }
+    if (!comment.trim() || comment.trim().length < 20) {
+      setVerifyError('Напишите комментарий минимум 20 символов о данном заведении');
+      return;
+    }
     setSubmitting(true);
     try {
-      await verificationsApi.create({ review_id: reviewId, comment });
+      await verificationsApi.create({ review_id: reviewId, comment, photos: verifyPhotos });
       const [r, v] = await Promise.all([
         reviewsApi.get(reviewId),
         verificationsApi.getByReview(reviewId),
@@ -48,6 +59,7 @@ export default function ReviewDetailPage() {
       setReview(r);
       setVerifications(v);
       setComment('');
+      setVerifyPhotos([]);
     } catch (err) {
       setVerifyError(err.response?.data?.detail || 'Ошибка при подтверждении');
     } finally {
@@ -193,21 +205,64 @@ export default function ReviewDetailPage() {
         {/* Verify Form */}
         {canVerify && !alreadyVerified && (
           <div className="glass rounded-xl p-6">
-            <h3 className="font-semibold text-foreground mb-3">Подтвердить отзыв</h3>
+            <h3 className="font-semibold text-foreground mb-1">Подтвердить отзыв</h3>
+            <p className="text-xs text-muted-foreground mb-4">Требуется фото-доказательство и описание (мин. 20 символов)</p>
             {verifyError && (
-              <p className="text-sm text-destructive mb-3">{verifyError}</p>
+              <p className="text-sm text-destructive mb-3 bg-destructive/10 p-3 rounded-lg">{verifyError}</p>
             )}
+            {/* Photo upload */}
+            <div className="mb-3">
+              <p className="text-xs text-muted-foreground mb-2 font-medium">Фотографии (обязательно)</p>
+              <div className="flex gap-2 flex-wrap">
+                {verifyPhotos.map((url, i) => (
+                  <div key={i} className="relative w-20 h-20 rounded-lg overflow-hidden border border-border/50">
+                    <img src={url} alt="" className="w-full h-full object-cover" />
+                    <button onClick={() => setVerifyPhotos(prev => prev.filter((_, j) => j !== i))}
+                      className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/60 rounded-full flex items-center justify-center">
+                      <X className="w-3 h-3 text-white" />
+                    </button>
+                  </div>
+                ))}
+                <label className={`w-20 h-20 rounded-lg border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors ${
+                  uploading ? 'border-primary/50 bg-primary/5' : 'border-border/50 hover:border-primary/50'
+                }`} data-testid="verify-photo-upload">
+                  {uploading ? <Loader2 className="w-5 h-5 animate-spin text-primary" /> : (
+                    <>
+                      <Camera className="w-5 h-5 text-muted-foreground mb-0.5" />
+                      <span className="text-[9px] text-muted-foreground">Фото</span>
+                    </>
+                  )}
+                  <input type="file" accept="image/*" className="hidden" disabled={uploading}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setUploading(true);
+                      try {
+                        const form = new FormData();
+                        form.append('file', file);
+                        const res = await api.post('/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+                        setVerifyPhotos(prev => [...prev, res.data.url]);
+                      } catch {}
+                      finally { setUploading(false); e.target.value = ''; }
+                    }}
+                  />
+                </label>
+              </div>
+            </div>
             <textarea
               value={comment}
               onChange={e => setComment(e.target.value)}
-              placeholder="Добавьте комментарий (необязательно)..."
+              placeholder="Опишите ваш опыт посещения данного заведения (мин. 20 символов)..."
               rows={3}
               data-testid="verify-comment-input"
-              className="w-full bg-secondary/50 border border-transparent focus:border-primary rounded-xl p-4 text-foreground placeholder:text-muted-foreground outline-none resize-none mb-3 transition-colors"
+              className="w-full bg-secondary/50 border border-transparent focus:border-primary rounded-xl p-4 text-foreground placeholder:text-muted-foreground outline-none resize-none mb-1 transition-colors"
             />
+            <p className={`text-[10px] mb-3 ${comment.trim().length >= 20 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+              {comment.trim().length}/20 символов
+            </p>
             <button
               onClick={handleVerify}
-              disabled={submitting}
+              disabled={submitting || verifyPhotos.length === 0 || comment.trim().length < 20}
               data-testid="verify-review-btn"
               className="bg-emerald-600 text-white font-medium py-3 px-6 rounded-xl hover:bg-emerald-700 transition-all disabled:opacity-50 flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
             >

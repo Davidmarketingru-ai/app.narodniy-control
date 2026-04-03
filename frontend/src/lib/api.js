@@ -116,4 +116,28 @@ export const verifyFeedApi = {
   pending: () => api.get('/reviews/pending-verification').then(r => r.data),
 };
 
+export const councilsApi = {
+  list: (params) => api.get('/councils', { params }).then(r => r.data),
+  get: (id) => api.get(`/councils/${id}`).then(r => r.data),
+  create: (data) => api.post('/councils', data).then(r => r.data),
+  confirm: (id) => api.post(`/councils/${id}/confirm`).then(r => r.data),
+  join: (id) => api.post(`/councils/${id}/join`).then(r => r.data),
+  leave: (id) => api.post(`/councils/${id}/leave`).then(r => r.data),
+  levels: () => api.get('/councils/levels').then(r => r.data),
+  discussions: (id) => api.get(`/councils/${id}/discussions`).then(r => r.data),
+  createDiscussion: (id, data) => api.post(`/councils/${id}/discussions`, data).then(r => r.data),
+  replyDiscussion: (cid, did, text) => api.post(`/councils/${cid}/discussions/${did}/reply`, { text }).then(r => r.data),
+  votes: (id) => api.get(`/councils/${id}/votes`).then(r => r.data),
+  createVote: (id, data) => api.post(`/councils/${id}/votes`, data).then(r => r.data),
+  castVote: (cid, vid, optionId) => api.post(`/councils/${cid}/votes/${vid}/cast`, { option_id: optionId }).then(r => r.data),
+  news: (id) => api.get(`/councils/${id}/news`).then(r => r.data),
+  createNews: (id, data) => api.post(`/councils/${id}/news`, data).then(r => r.data),
+  moderateNews: (cid, nid, data) => api.put(`/councils/${cid}/news/${nid}/moderate`, data).then(r => r.data),
+  repostNews: (cid, nid, targetId) => api.post(`/councils/${cid}/news/${nid}/repost`, { target_council_id: targetId }).then(r => r.data),
+  nominations: (id) => api.get(`/councils/${id}/nominations`).then(r => r.data),
+  nominate: (id, userId) => api.post(`/councils/${id}/nominate`, { user_id: userId }).then(r => r.data),
+  electReps: (id) => api.post(`/councils/${id}/elect-representatives`).then(r => r.data),
+  complaint: (id, repId, reason) => api.post(`/councils/${id}/complaint`, { representative_id: repId, reason }).then(r => r.data),
+};
+
 export default api;

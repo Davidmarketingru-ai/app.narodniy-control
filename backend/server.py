@@ -1862,8 +1862,13 @@ async def _ai_check_news(title: str, content: str) -> dict:
         llm_key = os.environ.get("EMERGENT_LLM_KEY", "")
         if not llm_key:
             return {"checked": False, "reason": "AI ключ не настроен"}
-        chat = LlmChat(api_key=llm_key, model="gpt-4o-mini")
-        prompt = f"""Ты — модератор платформы гражданского контроля. Проверь следующую новость на достоверность.
+        chat = LlmChat(
+            api_key=llm_key,
+            session_id=f"moderation_{uuid.uuid4().hex[:8]}",
+            system_message="Ты — AI-модератор платформы гражданского контроля. Отвечай строго в формате JSON."
+        )
+        chat.with_model("openai", "gpt-4o-mini")
+        prompt = f"""Проверь следующую новость на достоверность.
 
 Заголовок: {title}
 Содержание: {content}
@@ -1876,15 +1881,17 @@ async def _ai_check_news(title: str, content: str) -> dict:
 - "low" если невозможно проверить или подозрительно
 - "medium" если частично верно но требует проверки
 - "high" если информация правдоподобна"""
-        response = await asyncio.to_thread(chat.messages.create, messages=[UserMessage(content=prompt)])
+        user_msg = UserMessage(text=prompt)
+        response = await chat.send_message(user_msg)
         import json as jsonlib
-        text = response.content.strip()
+        text = response.strip()
         if text.startswith("```"):
             text = text.split("```")[1]
             if text.startswith("json"):
                 text = text[4:]
         return {"checked": True, "result": jsonlib.loads(text.strip())}
     except Exception as e:
+        logger.error(f"AI moderation error: {e}")
         return {"checked": False, "reason": str(e)[:200]}
 
 @api_router.get("/councils/{council_id}/news")
@@ -1900,8 +1907,9 @@ async def moderate_council_news(request: Request, council_id: str, news_id: str)
         if not council:
             raise HTTPException(status_code=404)
         is_rep = any(r["user_id"] == user["user_id"] for r in council.get("representatives", []))
-        if not is_rep:
-            raise HTTPException(status_code=403, detail="Только представители или админы")
+        is_chairman = any(m["user_id"] == user["user_id"] and m["role"] == "chairman" for m in council.get("members", []))
+        if not is_rep and not is_chairman:
+            raise HTTPException(status_code=403, detail="Только председатель, представители или админы")
     body = await request.json()
     action = body.get("action", "")
     if action == "approve":

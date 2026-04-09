@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { 
   User, Shield, Award, Settings, LogOut, Sun, Moon, ChevronRight,
   Copy, Check, Sprout, Eye, ShieldCheck, Crown, Star, Flame,
-  Users, Gift, Loader2
+  Users, Gift, Loader2, Home
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -14,6 +14,63 @@ const statusIcons = {
   seedling: Sprout, eye: Eye, shield: Shield, 'shield-check': ShieldCheck,
   award: Award, crown: Crown, star: Star,
 };
+
+function AddressForm({ user, onSave }) {
+  const [editing, setEditing] = useState(false);
+  const [addr, setAddr] = useState({ street: user?.street || '', house_number: user?.house_number || '', district: user?.district || '', city: user?.city || '' });
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await profileApi.update(addr);
+      if (onSave) await onSave();
+      setEditing(false);
+    } catch {} finally { setSaving(false); }
+  };
+
+  if (!editing) {
+    const hasAddr = user?.street && user?.house_number;
+    return (
+      <div>
+        {hasAddr ? (
+          <div className="space-y-1 mb-3">
+            <p className="text-sm text-foreground">{user.street}, д. {user.house_number}</p>
+            {(user.district || user.city) && <p className="text-xs text-muted-foreground">{[user.district, user.city].filter(Boolean).join(', ')}</p>}
+          </div>
+        ) : (
+          <p className="text-sm text-yellow-400 mb-3">Адрес не указан</p>
+        )}
+        <button onClick={() => setEditing(true)} data-testid="edit-address-btn"
+          className="text-xs px-3 py-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20">
+          {hasAddr ? 'Изменить' : 'Указать адрес'}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2">
+        <input type="text" value={addr.street} onChange={e => setAddr(p => ({ ...p, street: e.target.value }))}
+          placeholder="Улица *" className="bg-secondary/50 rounded-xl h-10 px-3 text-sm text-foreground outline-none" data-testid="addr-street" />
+        <input type="text" value={addr.house_number} onChange={e => setAddr(p => ({ ...p, house_number: e.target.value }))}
+          placeholder="Дом *" className="bg-secondary/50 rounded-xl h-10 px-3 text-sm text-foreground outline-none" data-testid="addr-house" />
+        <input type="text" value={addr.district} onChange={e => setAddr(p => ({ ...p, district: e.target.value }))}
+          placeholder="Район" className="bg-secondary/50 rounded-xl h-10 px-3 text-sm text-foreground outline-none" data-testid="addr-district" />
+        <input type="text" value={addr.city} onChange={e => setAddr(p => ({ ...p, city: e.target.value }))}
+          placeholder="Город" className="bg-secondary/50 rounded-xl h-10 px-3 text-sm text-foreground outline-none" data-testid="addr-city" />
+      </div>
+      <div className="flex gap-2">
+        <button onClick={handleSave} disabled={saving || !addr.street || !addr.house_number} data-testid="save-address-btn"
+          className="flex-1 bg-primary text-primary-foreground py-2 rounded-lg text-sm disabled:opacity-50">
+          {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Сохранить'}
+        </button>
+        <button onClick={() => setEditing(false)} className="px-4 py-2 glass rounded-lg text-sm text-muted-foreground">Отмена</button>
+      </div>
+    </div>
+  );
+}
 
 export default function ProfilePage() {
   const { user, logout, refreshUser } = useAuth();
@@ -262,6 +319,16 @@ export default function ProfilePage() {
               <Check className="w-4 h-4" /> Реферальный код уже активирован
             </p>
           )}
+        </div>
+
+        {/* Address for Councils */}
+        <div className="glass rounded-xl p-6 mb-6" data-testid="address-card">
+          <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Home className="w-5 h-5 text-primary" />
+            Адрес проживания
+          </h3>
+          <p className="text-xs text-muted-foreground mb-3">Указывается для участия в Народных Советах вашего дома</p>
+          <AddressForm user={user} onSave={refreshUser} />
         </div>
 
         {/* Age Group Selection */}

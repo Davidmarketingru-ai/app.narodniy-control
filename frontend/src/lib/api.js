@@ -124,6 +124,7 @@ export const councilsApi = {
   join: (id) => api.post(`/councils/${id}/join`).then(r => r.data),
   leave: (id) => api.post(`/councils/${id}/leave`).then(r => r.data),
   levels: () => api.get('/councils/levels').then(r => r.data),
+  formation: (id) => api.get(`/councils/${id}/formation`).then(r => r.data),
   discussions: (id) => api.get(`/councils/${id}/discussions`).then(r => r.data),
   createDiscussion: (id, data) => api.post(`/councils/${id}/discussions`, data).then(r => r.data),
   replyDiscussion: (cid, did, text) => api.post(`/councils/${cid}/discussions/${did}/reply`, { text }).then(r => r.data),
@@ -138,6 +139,9 @@ export const councilsApi = {
   nominate: (id, userId) => api.post(`/councils/${id}/nominate`, { user_id: userId }).then(r => r.data),
   electReps: (id) => api.post(`/councils/${id}/elect-representatives`).then(r => r.data),
   complaint: (id, repId, reason) => api.post(`/councils/${id}/complaint`, { representative_id: repId, reason }).then(r => r.data),
+  escalation: (id, data) => api.post(`/councils/${id}/escalation`, data).then(r => r.data),
+  activeEscalations: (level) => api.get('/councils/escalations/active', { params: level ? { level } : {} }).then(r => r.data),
+  voteEscalation: (eid, vote) => api.post(`/councils/escalations/${eid}/vote`, { vote }).then(r => r.data),
 };
 
 export default api;

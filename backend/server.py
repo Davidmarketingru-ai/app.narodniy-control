@@ -71,6 +71,10 @@ class UserOut(BaseModel):
     referral_code: Optional[str] = None
     referred_by: Optional[str] = None
     role: str = "user"
+    street: Optional[str] = None
+    house_number: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
     created_at: Optional[str] = None
 
 class OrganizationOut(BaseModel):
@@ -167,6 +171,10 @@ class ProfileUpdate(BaseModel):
     age_group: Optional[str] = None
     theme: Optional[str] = None
     text_scale: Optional[int] = None
+    street: Optional[str] = None
+    house_number: Optional[str] = None
+    district: Optional[str] = None
+    city: Optional[str] = None
 
 # ==================== Government Officials Models ====================
 BANNED_GOV_CATEGORIES = [
@@ -214,22 +222,25 @@ class GovReviewCreate(BaseModel):
 
 # ==================== People's Councils Models ====================
 COUNCIL_LEVELS = {
-    "yard": {"name": "Дворовый совет", "order": 1, "min_members": 3, "reps": 10},
-    "village": {"name": "Сельский совет", "order": 2, "min_members": 5, "reps": 10},
-    "district": {"name": "Районный совет", "order": 2, "min_members": 10, "reps": 10},
-    "city": {"name": "Городской совет", "order": 3, "min_members": 25, "reps": 10},
-    "republic": {"name": "Республиканский совет", "order": 4, "min_members": 50, "reps": 10},
-    "okrug": {"name": "Совет федерального округа", "order": 5, "min_members": 50, "reps": 10},
-    "country": {"name": "Народный совет РФ", "order": 6, "min_members": 80, "reps": 10},
+    "yard": {"name": "Дворовый совет", "order": 1, "min_members": 3, "reps": 10, "parent_level": None},
+    "district": {"name": "Районный совет", "order": 2, "min_members": 10, "reps": 10, "parent_level": "yard"},
+    "city": {"name": "Городской совет", "order": 3, "min_members": 25, "reps": 10, "parent_level": "district"},
+    "republic": {"name": "Республиканский совет", "order": 4, "min_members": 50, "reps": 10, "parent_level": "city"},
+    "country": {"name": "Народный совет", "order": 5, "min_members": 80, "reps": 10, "parent_level": "republic"},
 }
 
+LEVEL_ORDER = ["yard", "district", "city", "republic", "country"]
+
 COUNCIL_CREATION_CONFIRMATIONS_REQUIRED = 10
+FORMATION_THRESHOLD_PERCENT = 80
 
 class CouncilCreate(BaseModel):
     name: str = Field(..., min_length=3)
-    level: str
     description: str = Field(..., min_length=10)
-    address: Optional[str] = None
+    street: str = Field(..., min_length=2)
+    house_number: str = Field(..., min_length=1)
+    district: Optional[str] = None
+    city: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     legal_consent: bool = False
@@ -1132,6 +1143,9 @@ async def seed_data():
     await db.council_discussions.create_index("discussion_id", unique=True)
     await db.council_votes.create_index("council_id")
     await db.council_votes.create_index("vote_id", unique=True)
+    await db.council_escalations.create_index("escalation_id", unique=True)
+    await db.council_escalations.create_index("status")
+    await db.users.create_index([("street", 1), ("house_number", 1)])
 
     # Seed news
     news_count = await db.news.count_documents({})
@@ -1159,10 +1173,16 @@ async def seed_data():
         logger.info(f"Seeded {len(seed_news)} news articles")
 
     # Ensure existing test users have referral_code and role
-    await db.users.update_many(
-        {"referral_code": {"$exists": False}},
-        {"$set": {"referral_code": uuid.uuid4().hex[:8].upper(), "role": "user", "referred_by": None}}
-    )
+    # Update each user individually to generate unique referral codes
+    users_without_code = await db.users.find({"referral_code": {"$exists": False}}).to_list(1000)
+    for u in users_without_code:
+        try:
+            await db.users.update_one(
+                {"user_id": u["user_id"]},
+                {"$set": {"referral_code": uuid.uuid4().hex[:8].upper(), "role": "user", "referred_by": None}}
+            )
+        except Exception:
+            pass  # Skip if duplicate key error
 
     # Start background task for expiring reviews
     asyncio.create_task(expire_reviews_task())
@@ -1529,18 +1549,58 @@ async def list_gov_reviews(official_id: Optional[str] = None, category: Optional
 async def get_council_levels():
     return COUNCIL_LEVELS
 
+# Helper: count verified residents at an address
+async def _count_verified_at_address(street: str, house_number: str) -> int:
+    street_lower = street.strip().lower()
+    house_lower = house_number.strip().lower()
+    pipeline = [
+        {"$match": {"street": {"$regex": f"^{street_lower}$", "$options": "i"}, "house_number": {"$regex": f"^{house_lower}$", "$options": "i"}}},
+        {"$lookup": {"from": "verification_status", "localField": "user_id", "foreignField": "user_id", "as": "vs"}},
+        {"$match": {"vs.level": {"$gte": 2}}},
+        {"$count": "total"}
+    ]
+    result = await db.users.aggregate(pipeline).to_list(1)
+    return result[0]["total"] if result else 0
+
+# Helper: get formation % for a yard council
+async def _get_formation_info(council: dict) -> dict:
+    street = council.get("street", "")
+    house_number = council.get("house_number", "")
+    if not street or not house_number:
+        return {"total_verified": 0, "member_count": council.get("member_count", 0), "percent": 0, "formed": False}
+    total = await _count_verified_at_address(street, house_number)
+    members = council.get("member_count", 0)
+    pct = round((members / total * 100), 1) if total > 0 else 0
+    return {"total_verified": total, "member_count": members, "percent": pct, "formed": pct >= FORMATION_THRESHOLD_PERCENT}
+
 @api_router.post("/councils")
 async def create_council(request: Request, data: CouncilCreate):
     user = await require_user(request)
-    if data.level not in COUNCIL_LEVELS:
-        raise HTTPException(status_code=400, detail="Неверный уровень совета")
     if not data.legal_consent:
         raise HTTPException(status_code=400, detail="Необходимо принять юридическое соглашение")
+    # Only yard councils can be created manually
+    level = "yard"
+    # Check user has address set
+    if not data.street or not data.house_number:
+        raise HTTPException(status_code=400, detail="Укажите улицу и номер дома")
+    # Check no existing yard council for this address
+    existing = await db.councils.find_one({
+        "level": "yard",
+        "street": {"$regex": f"^{data.street.strip()}$", "$options": "i"},
+        "house_number": {"$regex": f"^{data.house_number.strip()}$", "$options": "i"},
+        "status": {"$in": ["active", "pending_confirmation"]}
+    }, {"_id": 0})
+    if existing:
+        raise HTTPException(status_code=400, detail="Дворовый совет для этого дома уже существует")
     cid = f"council_{uuid.uuid4().hex[:12]}"
     now = datetime.now(timezone.utc).isoformat()
     await db.councils.insert_one({
-        "council_id": cid, "name": data.name, "level": data.level,
-        "description": data.description, "address": data.address or "",
+        "council_id": cid, "name": data.name, "level": level,
+        "description": data.description,
+        "street": data.street.strip(), "house_number": data.house_number.strip(),
+        "district": data.district.strip() if data.district else "",
+        "city": data.city.strip() if data.city else "",
+        "address": f"{data.street.strip()}, д. {data.house_number.strip()}",
         "latitude": data.latitude, "longitude": data.longitude,
         "created_by": user["user_id"], "creator_name": user.get("name", ""),
         "members": [{"user_id": user["user_id"], "name": user.get("name", ""), "role": "chairman", "joined_at": now, "points": user.get("points", 0)}],
@@ -1558,8 +1618,20 @@ async def create_council(request: Request, data: CouncilCreate):
         "legal_consent_by": user["user_id"],
         "legal_consent_at": now,
     })
+    # Also save address to user profile if not set
+    if not user.get("street"):
+        await db.users.update_one({"user_id": user["user_id"]}, {"$set": {"street": data.street.strip(), "house_number": data.house_number.strip(), "district": data.district or "", "city": data.city or ""}})
     council = await db.councils.find_one({"council_id": cid}, {"_id": 0})
     return council
+
+@api_router.get("/councils/{council_id}/formation")
+async def get_council_formation(council_id: str):
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    if council["level"] != "yard":
+        return {"total_verified": 0, "member_count": council.get("member_count", 0), "percent": 100, "formed": True}
+    return await _get_formation_info(council)
 
 @api_router.post("/councils/{council_id}/confirm")
 async def confirm_council_creation(request: Request, council_id: str):
@@ -1736,6 +1808,166 @@ async def file_rep_complaint(request: Request, council_id: str):
         "status": "open", "created_at": now,
     })
     return {"complaint_id": cid, "status": "open"}
+
+# ==================== Council Escalation (Higher-level formation) ====================
+@api_router.post("/councils/{council_id}/escalation")
+async def initiate_escalation(request: Request, council_id: str):
+    """Chairman/rep of a formed council initiates vote to create next-level council."""
+    user = await require_user(request)
+    council = await db.councils.find_one({"council_id": council_id}, {"_id": 0})
+    if not council:
+        raise HTTPException(status_code=404, detail="Совет не найден")
+    if not council.get("confirmed"):
+        raise HTTPException(status_code=400, detail="Совет ещё не подтверждён")
+    # Only chairman/rep can initiate
+    member = next((m for m in council.get("members", []) if m["user_id"] == user["user_id"]), None)
+    if not member or member["role"] not in ["chairman", "representative"]:
+        raise HTTPException(status_code=403, detail="Только председатель или представитель может инициировать")
+    # Check council is formed (80% for yard)
+    if council["level"] == "yard":
+        formation = await _get_formation_info(council)
+        if not formation["formed"]:
+            raise HTTPException(status_code=400, detail=f"Совет не сформирован. Нужно {FORMATION_THRESHOLD_PERCENT}% жителей, сейчас {formation['percent']}%")
+    # Get next level
+    current_idx = LEVEL_ORDER.index(council["level"]) if council["level"] in LEVEL_ORDER else -1
+    if current_idx < 0 or current_idx >= len(LEVEL_ORDER) - 1:
+        raise HTTPException(status_code=400, detail="Нельзя создать совет выше текущего уровня")
+    next_level = LEVEL_ORDER[current_idx + 1]
+    # Check no active escalation already
+    existing = await db.council_escalations.find_one({
+        "source_council_id": council_id, "status": "voting"
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="Голосование за эскалацию уже идёт")
+    body = await request.json()
+    target_name = body.get("name", f"{COUNCIL_LEVELS[next_level]['name']}")
+    target_district = body.get("district", council.get("district", ""))
+    target_city = body.get("city", council.get("city", ""))
+    # Find all eligible councils at the same level in the same area
+    area_query = {"level": council["level"], "confirmed": True, "status": "active"}
+    if council["level"] == "yard":
+        if target_district:
+            area_query["district"] = {"$regex": f"^{target_district}$", "$options": "i"}
+        elif target_city:
+            area_query["city"] = {"$regex": f"^{target_city}$", "$options": "i"}
+    elif council["level"] == "district":
+        if target_city:
+            area_query["city"] = {"$regex": f"^{target_city}$", "$options": "i"}
+    eligible = await db.councils.find(area_query, {"_id": 0, "council_id": 1, "name": 1}).to_list(200)
+    eligible_ids = [c["council_id"] for c in eligible]
+    if len(eligible_ids) < 2:
+        raise HTTPException(status_code=400, detail="Недостаточно советов для формирования следующего уровня (мин. 2)")
+    eid = f"escal_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc).isoformat()
+    expires = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    await db.council_escalations.insert_one({
+        "escalation_id": eid,
+        "source_council_id": council_id,
+        "source_level": council["level"],
+        "target_level": next_level,
+        "target_name": target_name,
+        "target_district": target_district,
+        "target_city": target_city,
+        "eligible_council_ids": eligible_ids,
+        "votes_for": [council_id],
+        "votes_against": [],
+        "initiated_by": user["user_id"],
+        "initiator_name": user.get("name", ""),
+        "status": "voting",
+        "created_at": now,
+        "expires_at": expires,
+    })
+    return {"escalation_id": eid, "eligible_count": len(eligible_ids), "target_level": next_level}
+
+@api_router.get("/councils/escalations/active")
+async def list_active_escalations(level: Optional[str] = None):
+    query = {"status": "voting"}
+    if level:
+        query["source_level"] = level
+    escalations = await db.council_escalations.find(query, {"_id": 0}).sort("created_at", -1).to_list(50)
+    return escalations
+
+@api_router.post("/councils/escalations/{escalation_id}/vote")
+async def vote_on_escalation(request: Request, escalation_id: str):
+    """Chairman/rep of an eligible council votes for/against escalation."""
+    user = await require_user(request)
+    body = await request.json()
+    vote_value = body.get("vote", "for")  # "for" or "against"
+    escal = await db.council_escalations.find_one({"escalation_id": escalation_id}, {"_id": 0})
+    if not escal or escal["status"] != "voting":
+        raise HTTPException(status_code=404, detail="Голосование не найдено или завершено")
+    # Check user is chairman/rep of an eligible council
+    user_councils = await db.councils.find({
+        "council_id": {"$in": escal["eligible_council_ids"]},
+        "members": {"$elemMatch": {"user_id": user["user_id"], "role": {"$in": ["chairman", "representative"]}}}
+    }, {"_id": 0, "council_id": 1}).to_list(100)
+    if not user_councils:
+        raise HTTPException(status_code=403, detail="Вы не председатель/представитель подходящего совета")
+    user_council_ids = [c["council_id"] for c in user_councils]
+    # Check not already voted
+    already = set(escal.get("votes_for", [])) | set(escal.get("votes_against", []))
+    for cid in user_council_ids:
+        if cid in already:
+            raise HTTPException(status_code=400, detail="Ваш совет уже проголосовал")
+    # Record vote (use first eligible council)
+    voting_cid = user_council_ids[0]
+    if vote_value == "for":
+        await db.council_escalations.update_one({"escalation_id": escalation_id}, {"$push": {"votes_for": voting_cid}})
+    else:
+        await db.council_escalations.update_one({"escalation_id": escalation_id}, {"$push": {"votes_against": voting_cid}})
+    # Check if majority reached
+    updated = await db.council_escalations.find_one({"escalation_id": escalation_id}, {"_id": 0})
+    total_eligible = len(updated["eligible_council_ids"])
+    votes_for = len(updated.get("votes_for", []))
+    majority = total_eligible // 2 + 1
+    if votes_for >= majority:
+        # Create next-level council!
+        new_cid = f"council_{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc).isoformat()
+        # Gather representatives from all voting-for councils
+        reps = []
+        for vc_id in updated["votes_for"]:
+            vc = await db.councils.find_one({"council_id": vc_id}, {"_id": 0})
+            if vc:
+                chairman = next((m for m in vc.get("members", []) if m["role"] == "chairman"), None)
+                if chairman:
+                    reps.append({"user_id": chairman["user_id"], "name": chairman.get("name", ""), "role": "representative", "from_council": vc_id, "joined_at": now})
+        creator = reps[0] if reps else {"user_id": user["user_id"], "name": user.get("name", ""), "role": "chairman", "joined_at": now}
+        # Set first rep as chairman
+        if reps:
+            reps[0]["role"] = "chairman"
+        else:
+            reps = [creator]
+        await db.councils.insert_one({
+            "council_id": new_cid,
+            "name": updated["target_name"],
+            "level": updated["target_level"],
+            "description": f"Сформирован голосованием из {votes_for} советов уровня '{COUNCIL_LEVELS[updated['source_level']]['name']}'",
+            "street": "", "house_number": "",
+            "district": updated.get("target_district", ""),
+            "city": updated.get("target_city", ""),
+            "address": "",
+            "created_by": user["user_id"], "creator_name": user.get("name", ""),
+            "members": reps,
+            "member_count": len(reps),
+            "representatives": [],
+            "rep_count": 0,
+            "confirmations": [],
+            "confirmations_needed": 0,
+            "confirmed": True,
+            "discussion_count": 0, "vote_count": 0, "news_count": 0,
+            "parent_council_id": None,
+            "child_council_ids": updated["votes_for"],
+            "status": "active",
+            "created_at": now,
+            "formed_via_escalation": escalation_id,
+        })
+        # Link child councils
+        for vc_id in updated["votes_for"]:
+            await db.councils.update_one({"council_id": vc_id}, {"$set": {"parent_council_id": new_cid}})
+        await db.council_escalations.update_one({"escalation_id": escalation_id}, {"$set": {"status": "completed", "result_council_id": new_cid, "completed_at": now}})
+        return {"success": True, "status": "completed", "new_council_id": new_cid, "votes_for": votes_for, "majority": majority}
+    return {"success": True, "status": "voting", "votes_for": votes_for, "majority": majority, "total_eligible": total_eligible}
 
 # ==================== Council Discussions ====================
 @api_router.post("/councils/{council_id}/discussions")

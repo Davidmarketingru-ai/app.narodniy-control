@@ -1,0 +1,116 @@
+{
+  "summary": "Iteration 11: Comprehensive testing of new council features - yard-only creation, formation threshold (80%), and escalation voting system. All 30 backend API tests passed (100%). Frontend testing verified all new features including yard-only create button, street/house_number fields, formation bar, escalation tab with initiate/vote UI, and ProfilePage address form.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed_tests": [
+    "BACKEND: GET /api/councils/levels - Returns level hierarchy with parent_level info (yard->district->city->republic->country)",
+    "BACKEND: POST /api/councils - Requires authentication (401)",
+    "BACKEND: POST /api/councils - Rejects if legal_consent is false",
+    "BACKEND: POST /api/councils - Requires street + house_number",
+    "BACKEND: POST /api/councils - Only creates yard level (ignores level field)",
+    "BACKEND: POST /api/councils - Rejects duplicate address (same street + house_number)",
+    "BACKEND: GET /api/councils/{id}/formation - Returns formation percentage for yard councils",
+    "BACKEND: GET /api/councils/{id}/formation - Returns 100% for non-yard councils",
+    "BACKEND: GET /api/councils/{id}/formation - Returns 404 for non-existent council",
+    "BACKEND: POST /api/councils/{id}/confirm - Requires authentication",
+    "BACKEND: POST /api/councils/{id}/confirm - Requires verification level 2+",
+    "BACKEND: POST /api/councils/{id}/join - Requires authentication",
+    "BACKEND: POST /api/councils/{id}/join - Joins council successfully",
+    "BACKEND: POST /api/councils/{id}/discussions - Requires authentication",
+    "BACKEND: POST /api/councils/{id}/discussions - Requires membership",
+    "BACKEND: POST /api/councils/{id}/news - Requires authentication",
+    "BACKEND: POST /api/councils/{id}/news - Requires chairman/rep role, includes AI check",
+    "BACKEND: POST /api/councils/{id}/escalation - Requires authentication",
+    "BACKEND: POST /api/councils/{id}/escalation - Requires chairman/rep role",
+    "BACKEND: POST /api/councils/{id}/escalation - Requires confirmed+formed council (80%)",
+    "BACKEND: GET /api/councils/escalations/active - Lists active escalation votes",
+    "BACKEND: POST /api/councils/escalations/{eid}/vote - Requires authentication",
+    "BACKEND: POST /api/councils/escalations/{eid}/vote - Requires chairman/rep of eligible council",
+    "BACKEND: POST /api/councils/escalations/{eid}/vote - Returns 404 for non-existent escalation",
+    "BACKEND: Existing council_766c80223222 is yard level, active, 100% formed",
+    "BACKEND: Existing council_0c4b7a580b9d is yard level",
+    "BACKEND: Existing council_0a5d54fc20a6 is district level, formed via escalation",
+    "BACKEND: GET /api/councils - Lists all councils",
+    "BACKEND: GET /api/councils?level=yard - Filters by level",
+    "BACKEND: GET /api/councils?status=active - Filters by status",
+    "FRONTEND: CouncilsPage loads with 'Народные Советы' title",
+    "FRONTEND: 'Создать двор' button (yard-only creation, no level selector)",
+    "FRONTEND: Level filters visible (Все, Дворовый, Районный, Городской, Республиканский, Народный)",
+    "FRONTEND: Create modal titled 'Создать дворовый совет'",
+    "FRONTEND: Create modal has street + house_number fields (Улица *, Номер дома *)",
+    "FRONTEND: Create modal has district + city fields (Район, Город)",
+    "FRONTEND: Create modal has legal consent checkbox",
+    "FRONTEND: Council detail shows formation bar (Формирование: 5/5 жителей 100% Сформирован)",
+    "FRONTEND: Council detail has Escalation tab (Эскалация)",
+    "FRONTEND: Escalation tab has 'Инициировать Районный совет' button",
+    "FRONTEND: Escalation modal titled 'Создать Районный совет'",
+    "FRONTEND: Escalation modal has name, district, city fields",
+    "FRONTEND: ProfilePage has 'Адрес проживания' section",
+    "FRONTEND: ProfilePage address form has street, house_number, district, city fields"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_councils_iteration11.py",
+    "/app/test_reports/pytest/pytest_results_iteration11.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fixed seed_data duplicate key error - referral_code unique index was causing startup failure when updating multiple users with same generated code",
+    "Council creation correctly enforces yard-only level",
+    "Formation threshold (80%) correctly calculated based on verified residents at same address",
+    "Escalation voting system working - chairman/rep can initiate, eligible councils can vote, majority creates next-level council",
+    "District council (council_0a5d54fc20a6) was successfully formed via escalation voting"
+  ],
+  "updated_files": [
+    "/app/backend/server.py (fixed seed_data duplicate key error)",
+    "/app/backend/tests/test_councils_iteration11.py"
+  ],
+  "success_rate": {
+    "backend": "100% (30/30 tests passed)",
+    "frontend": "100% (all new council features working correctly)"
+  },
+  "test_credentials": {
+    "user1_token": "Bearer WRANhsgZEBRoK2GSyIUvBEaqIWo0YtmhTsICy2Y4cPc",
+    "user1_id": "user_eec305b08f9c",
+    "user1_role": "chairman of council_766c80223222",
+    "user2_token": "Bearer qaiAgO3W1YY2ZRN-5c2wk2BrNaGBNVE_rfYAxlye9cI",
+    "user2_id": "test-user-council-2",
+    "user_house2_token": "Bearer xvLTdXAyTaWU6uzqMo2NMpdrnqwuxIfGtlf_66FbhN4",
+    "user_house2_role": "chairman of council_0c4b7a580b9d"
+  },
+  "seed_data_creation": "Used existing test councils and users. council_766c80223222 is 100% formed (5/5 verified residents)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Iteration 11 tested the new council hierarchy system: only yard councils can be created manually, higher levels (district, city, republic, country) form through escalation voting. Formation threshold is 80% of verified residents at the same address. Test data includes: council_766c80223222 (yard, 100% formed, active), council_0c4b7a580b9d (yard, active), council_0a5d54fc20a6 (district, formed via escalation). User1 (WRANhsgZEBRoK2GSyIUvBEaqIWo0YtmhTsICy2Y4cPc) is chairman of council_766c80223222 at address Ленина 15. ProfilePage now has AddressForm component for setting street, house_number, district, city.",
+  "features_verified": {
+    "council_creation": {
+      "yard_only": "POST /api/councils always creates yard level",
+      "address_required": "street + house_number required",
+      "duplicate_check": "Rejects duplicate address",
+      "legal_consent": "Requires legal_consent=true"
+    },
+    "formation_system": {
+      "endpoint": "GET /api/councils/{id}/formation",
+      "threshold": "80% of verified residents at same address",
+      "yard_councils": "Returns actual percentage",
+      "non_yard_councils": "Returns 100% (always formed)"
+    },
+    "escalation_system": {
+      "initiate": "POST /api/councils/{id}/escalation (chairman/rep only, requires formed council)",
+      "list_active": "GET /api/councils/escalations/active",
+      "vote": "POST /api/councils/escalations/{eid}/vote (chairman/rep of eligible council)",
+      "auto_create": "Majority vote auto-creates next-level council"
+    },
+    "frontend_components": {
+      "councils_page": "Yard-only create button, level filters, formation bar",
+      "council_detail": "Escalation tab with initiate/vote UI",
+      "profile_page": "AddressForm with street, house_number, district, city"
+    }
+  }
+}

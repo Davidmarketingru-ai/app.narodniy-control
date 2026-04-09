@@ -3,23 +3,33 @@
 ## Architecture
 React.js + FastAPI + MongoDB | Auth: Google OAuth | Jurisdiction: Kyrgyz Republic (PVT Bishkek)
 
-## Implemented
+## Council Hierarchy (Core Feature)
+- **Yard (Дворовый)** — only level created manually. One house = one council. Requires street + house_number.
+- **District (Районный)** — formed by escalation voting from yard councils in the same district.
+- **City (Городской)** — formed by escalation voting from district councils.
+- **Republic (Республиканский)** — formed from city councils.
+- **Country (Народный)** — formed from republic councils.
 
-### Core: Auth, Reviews (with mandatory photo+comment verification), Organizations, Map, Admin, Rewards, Referrals, PWA
-### Phase 2: News Feed, Widgets (weather/currency/magnetic), Problems Map, Identity Verification
-### Phase 3: Support Tickets + FAQ, Terms/Privacy (152-FZ, 436-FZ), Consent + Cookie Banner
-### Phase 4: Onboarding, Verify Feed, Sharing, Adaptive Timer, Daily Missions + Streak
-### Phase 5:
-- **Mandatory verification proof**: photo + 20-char comment required
-- **Gov Officials** (`/gov`): 15 allowed categories, blacklist (ФСБ/ФСО/СВР/ГРУ/military), reviews with ratings
-- **Legal: Kyrgyzstan** (ОсОО, ПВТ, Бишкек) — no personal names anywhere
-### Phase 6 (Current — Completed 2026-04-03):
-- **People's Councils** (`/councils`): 5 levels (yard->district->city->republic->country)
-  - Council creation with legal consent + 10 verifications required
-  - Join/leave, discussions, votes, news
-  - **AI-moderated news** via emergentintegrations (gpt-4o-mini): credibility scoring (high/medium/low/fake)
-  - Representative nominations, elections, complaints
-  - Frontend: 4 tabs (Discussions, Votes, News, Nominations), confirmation progress bars, AI labels
+### Formation Rules
+- Yard council requires 10 confirmations from verified users to activate.
+- A yard council is "formed" when 80% of verified residents at that address are members.
+- Escalation: chairman/rep of a formed council can initiate vote to create next-level council.
+- All same-level councils in the area vote; majority creates the next level automatically.
+- One address can only have one yard council (duplicate check).
+
+## Implemented Features
+
+### Phase 1-4: Auth (Google OAuth), Reviews, Organizations, Map, Admin, Rewards, Referrals, News, Widgets, Problems Map, Verification, Support, Legal (KG), Onboarding, Daily Missions, Sharing
+### Phase 5: Mandatory verification (photo+comment), Gov Officials (blacklisted: ФСБ/ФСО/СВР/ГРУ), Legal Kyrgyzstan anchoring
+### Phase 6 (Completed 2026-04-04):
+- **People's Councils** with hierarchical escalation system
+- Yard-only manual creation with address binding
+- 80% formation threshold tracking
+- Escalation voting for higher-level councils
+- AI-moderated news (emergentintegrations + gpt-4o-mini)
+- Discussions, votes, nominations, elections, complaints
+- User address fields in profile
+- Frontend: FormationBar, EscalationTab, 5 tabs in detail view
 
 ## Blacklisted Gov Keywords
 фсб, фсо, свр, гру, разведк, контрразвед, спецслужб, спецназ, секретн, минобороны, генштаб, военн, росгвардия, нацгвардия

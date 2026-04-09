@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Home, Map, PlusCircle, Bell, User, Award, Shield,
   Menu, X, LogOut, Star, ShieldAlert, Newspaper, LayoutGrid, MapPin, ShieldCheck, HelpCircle, CheckSquare,
-  Building2, Users
+  Building2, Users, BarChart3
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { notificationsApi } from '../lib/api';
@@ -13,6 +13,7 @@ const navItems = [
   { to: '/dashboard', label: 'Главная', icon: Home },
   { to: '/news', label: 'Новости', icon: Newspaper },
   { to: '/councils', label: 'Советы', icon: Users },
+  { to: '/stats', label: 'Статистика', icon: BarChart3 },
   { to: '/gov', label: 'Госслужащие', icon: Building2 },
   { to: '/verify', label: 'Проверить', icon: CheckSquare },
   { to: '/problems-map', label: 'Проблемы', icon: MapPin },

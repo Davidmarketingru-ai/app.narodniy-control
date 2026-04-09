@@ -1038,6 +1038,221 @@ async def get_problems_map():
     ).sort("created_at", -1).to_list(500)
     return reviews
 
+# ==================== Mood System ====================
+MOOD_LEVELS = {
+    "excellent": {"name": "Отличное", "order": 5, "color": "#10b981"},
+    "normal": {"name": "Нормальное", "order": 4, "color": "#3b82f6"},
+    "mild_upset": {"name": "Лёгкое расстройство", "order": 3, "color": "#f59e0b"},
+    "dissatisfaction": {"name": "Недовольство", "order": 2, "color": "#f97316"},
+    "stress": {"name": "Стресс", "order": 1, "color": "#ef4444"},
+    "anger": {"name": "Гнев (нужно решение)", "order": 0, "color": "#dc2626"},
+}
+
+@api_router.post("/mood")
+async def set_user_mood(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    mood = body.get("mood")
+    council_id = body.get("council_id")
+    if mood not in MOOD_LEVELS:
+        raise HTTPException(status_code=400, detail="Неверное настроение")
+    now = datetime.now(timezone.utc).isoformat()
+    query = {"user_id": user["user_id"]}
+    if council_id:
+        query["council_id"] = council_id
+    else:
+        query["council_id"] = "__global__"
+    await db.user_moods.update_one(query, {"$set": {**query, "mood": mood, "user_name": user.get("name", ""), "updated_at": now}}, upsert=True)
+    return {"success": True}
+
+@api_router.get("/mood")
+async def get_my_mood(request: Request):
+    user = await require_user(request)
+    moods = await db.user_moods.find({"user_id": user["user_id"]}, {"_id": 0}).to_list(50)
+    return moods
+
+# ==================== Public Statistics ====================
+@api_router.get("/stats/public")
+async def public_stats():
+    total_users = await db.users.count_documents({})
+    total_reviews = await db.reviews.count_documents({})
+    approved_reviews = await db.reviews.count_documents({"status": "approved"})
+    pending_reviews = await db.reviews.count_documents({"status": "pending"})
+    total_orgs = await db.organizations.count_documents({})
+    total_councils = await db.councils.count_documents({})
+    active_councils = await db.councils.count_documents({"status": "active"})
+    total_verifications = await db.verifications.count_documents({})
+    council_by_level = {}
+    for lvl in ["yard", "district", "city", "republic", "country"]:
+        council_by_level[lvl] = await db.councils.count_documents({"level": lvl, "status": "active"})
+    top_orgs = await db.organizations.find({"review_count": {"$gte": 1}}, {"_id": 0, "org_id": 1, "name": 1, "category": 1, "average_rating": 1, "review_count": 1, "address": 1}).sort("average_rating", -1).to_list(10)
+    problems_on_map = await db.reviews.count_documents({"latitude": {"$ne": None}})
+    low_rated = await db.reviews.count_documents({"rating": {"$lte": 2}})
+    return {
+        "total_users": total_users, "total_reviews": total_reviews,
+        "approved_reviews": approved_reviews, "pending_reviews": pending_reviews,
+        "total_orgs": total_orgs, "total_councils": total_councils,
+        "active_councils": active_councils, "total_verifications": total_verifications,
+        "council_by_level": council_by_level, "top_orgs": top_orgs,
+        "problems_on_map": problems_on_map, "low_rated_reviews": low_rated,
+    }
+
+@api_router.get("/stats/mood")
+async def public_mood_stats():
+    pipeline = [
+        {"$match": {"council_id": "__global__"}},
+        {"$group": {"_id": "$mood", "count": {"$sum": 1}}},
+    ]
+    results = await db.user_moods.aggregate(pipeline).to_list(10)
+    mood_counts = {r["_id"]: r["count"] for r in results}
+    total = sum(mood_counts.values())
+    weighted = sum(MOOD_LEVELS[m]["order"] * c for m, c in mood_counts.items() if m in MOOD_LEVELS)
+    avg_score = round(weighted / total, 2) if total > 0 else 3.0
+    if avg_score >= 4.5: dominant = "excellent"
+    elif avg_score >= 3.5: dominant = "normal"
+    elif avg_score >= 2.5: dominant = "mild_upset"
+    elif avg_score >= 1.5: dominant = "dissatisfaction"
+    elif avg_score >= 0.5: dominant = "stress"
+    else: dominant = "anger"
+    return {"mood_counts": mood_counts, "total_votes": total, "average_score": avg_score, "dominant_mood": dominant, "mood_levels": MOOD_LEVELS}
+
+@api_router.get("/stats/mood/{council_id}")
+async def council_mood_stats(council_id: str):
+    pipeline = [
+        {"$match": {"council_id": council_id}},
+        {"$group": {"_id": "$mood", "count": {"$sum": 1}}},
+    ]
+    results = await db.user_moods.aggregate(pipeline).to_list(10)
+    mood_counts = {r["_id"]: r["count"] for r in results}
+    total = sum(mood_counts.values())
+    weighted = sum(MOOD_LEVELS[m]["order"] * c for m, c in mood_counts.items() if m in MOOD_LEVELS)
+    avg_score = round(weighted / total, 2) if total > 0 else 3.0
+    if avg_score >= 4.5: dominant = "excellent"
+    elif avg_score >= 3.5: dominant = "normal"
+    elif avg_score >= 2.5: dominant = "mild_upset"
+    elif avg_score >= 1.5: dominant = "dissatisfaction"
+    elif avg_score >= 0.5: dominant = "stress"
+    else: dominant = "anger"
+    return {"council_id": council_id, "mood_counts": mood_counts, "total_votes": total, "average_score": avg_score, "dominant_mood": dominant}
+
+# ==================== Public Organization Page ====================
+@api_router.get("/org/{org_id}/public")
+async def public_org_page(org_id: str):
+    org = await db.organizations.find_one({"org_id": org_id}, {"_id": 0})
+    if not org:
+        raise HTTPException(status_code=404, detail="Организация не найдена")
+    reviews = await db.reviews.find(
+        {"org_id": org_id, "status": {"$in": ["approved", "pending"]}},
+        {"_id": 0, "review_id": 1, "title": 1, "content": 1, "rating": 1, "user_name": 1, "status": 1, "verification_count": 1, "created_at": 1}
+    ).sort("created_at", -1).to_list(50)
+    dist = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for r in reviews:
+        if r.get("rating") in dist:
+            dist[r["rating"]] += 1
+    return {**org, "reviews": reviews, "rating_distribution": dist}
+
+# ==================== Push Notifications ====================
+@api_router.get("/push/vapid-key")
+async def get_vapid_key():
+    return {"public_key": os.environ.get("VAPID_PUBLIC_KEY", "")}
+
+@api_router.post("/push/subscribe")
+async def push_subscribe(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    subscription = body.get("subscription")
+    if not subscription:
+        raise HTTPException(status_code=400, detail="Missing subscription")
+    await db.push_subscriptions.update_one(
+        {"user_id": user["user_id"], "endpoint": subscription.get("endpoint")},
+        {"$set": {"user_id": user["user_id"], "subscription": subscription, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {"success": True}
+
+@api_router.delete("/push/unsubscribe")
+async def push_unsubscribe(request: Request):
+    user = await require_user(request)
+    body = await request.json()
+    endpoint = body.get("endpoint")
+    if endpoint:
+        await db.push_subscriptions.delete_one({"user_id": user["user_id"], "endpoint": endpoint})
+    else:
+        await db.push_subscriptions.delete_many({"user_id": user["user_id"]})
+    return {"success": True}
+
+async def send_push_to_user(user_id: str, title: str, body_text: str, url: str = "/"):
+    try:
+        import json as jsonlib
+        from pywebpush import webpush
+        vapid_private = os.environ.get("VAPID_PRIVATE_KEY", "").replace("\\n", "\n")
+        vapid_claims = {"sub": "mailto:admin@narcontrol.kg"}
+        subs = await db.push_subscriptions.find({"user_id": user_id}, {"_id": 0}).to_list(10)
+        payload = jsonlib.dumps({"title": title, "body": body_text, "url": url}, ensure_ascii=False)
+        for s in subs:
+            try:
+                webpush(subscription_info=s["subscription"], data=payload, vapid_private_key=vapid_private, vapid_claims=vapid_claims)
+            except Exception:
+                await db.push_subscriptions.delete_one({"user_id": user_id, "endpoint": s["subscription"].get("endpoint")})
+    except Exception as e:
+        logger.error(f"Push error: {e}")
+
+# ==================== Telegram Bot Admin Panel ====================
+@api_router.get("/admin/telegram/config")
+async def get_telegram_config(request: Request):
+    await require_admin(request)
+    staff = await db.telegram_staff.find({}, {"_id": 0}).to_list(100)
+    return {
+        "user_bot_configured": bool(os.environ.get("TELEGRAM_BOT_TOKEN", "")),
+        "admin_bot_configured": bool(os.environ.get("TELEGRAM_ADMIN_BOT_TOKEN", "")),
+        "staff": staff,
+        "permissions_template": [
+            {"key": "manage_reviews", "label": "Управление отзывами"},
+            {"key": "manage_orgs", "label": "Управление организациями"},
+            {"key": "manage_councils", "label": "Управление советами"},
+            {"key": "manage_users", "label": "Управление пользователями"},
+            {"key": "view_stats", "label": "Просмотр статистики"},
+            {"key": "send_notifications", "label": "Отправка уведомлений"},
+            {"key": "moderate_news", "label": "Модерация новостей"},
+        ]
+    }
+
+@api_router.post("/admin/telegram/staff")
+async def add_telegram_staff(request: Request):
+    await require_admin(request)
+    body = await request.json()
+    tg_user_id = body.get("telegram_user_id")
+    name = body.get("name", "")
+    permissions = body.get("permissions", [])
+    if not tg_user_id:
+        raise HTTPException(status_code=400, detail="telegram_user_id обязателен")
+    sid = f"tgstaff_{uuid.uuid4().hex[:8]}"
+    await db.telegram_staff.update_one(
+        {"telegram_user_id": str(tg_user_id)},
+        {"$set": {"staff_id": sid, "telegram_user_id": str(tg_user_id), "name": name, "permissions": permissions, "active": True, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    return {"staff_id": sid, "success": True}
+
+@api_router.put("/admin/telegram/staff/{staff_id}")
+async def update_telegram_staff(request: Request, staff_id: str):
+    await require_admin(request)
+    body = await request.json()
+    upd = {}
+    if "permissions" in body: upd["permissions"] = body["permissions"]
+    if "active" in body: upd["active"] = body["active"]
+    if "name" in body: upd["name"] = body["name"]
+    if upd:
+        upd["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db.telegram_staff.update_one({"staff_id": staff_id}, {"$set": upd})
+    return {"success": True}
+
+@api_router.delete("/admin/telegram/staff/{staff_id}")
+async def delete_telegram_staff(request: Request, staff_id: str):
+    await require_admin(request)
+    await db.telegram_staff.delete_one({"staff_id": staff_id})
+    return {"success": True}
+
 # ==================== Review Expiry Background Task ====================
 async def expire_reviews_task():
     """Background task that marks expired pending reviews"""

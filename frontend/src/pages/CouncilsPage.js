@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { councilsApi } from '../lib/api';
+import api from '../lib/api';
 
 const LEVEL_CONFIG = {
   yard: { name: 'Дворовый', color: '#10b981' },
@@ -69,6 +70,69 @@ function FormationBar({ councilId }) {
       <div className="w-full bg-secondary/50 rounded-full h-2 overflow-hidden">
         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(info.percent, 100)}%`, backgroundColor: info.formed ? '#10b981' : '#3b82f6' }} />
       </div>
+    </div>
+  );
+}
+
+const MOOD_CFG = {
+  excellent: { name: 'Отличное', color: '#10b981' },
+  normal: { name: 'Нормальное', color: '#3b82f6' },
+  mild_upset: { name: 'Расстройство', color: '#f59e0b' },
+  dissatisfaction: { name: 'Недовольство', color: '#f97316' },
+  stress: { name: 'Стресс', color: '#ef4444' },
+  anger: { name: 'Гнев', color: '#dc2626' },
+};
+
+function CouncilMoodGauge({ councilId, isMember }) {
+  const [mood, setMood] = useState(null);
+  const [myMood, setMyMood] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get(`/stats/mood/${councilId}`).then(r => setMood(r.data)).catch(() => {});
+    api.get('/mood').then(r => {
+      const cm = r.data?.find(m => m.council_id === councilId);
+      if (cm) setMyMood(cm.mood);
+    }).catch(() => {});
+  }, [councilId]);
+
+  const setMoodValue = async (m) => {
+    setSaving(true);
+    try {
+      await api.post('/mood', { mood: m, council_id: councilId });
+      setMyMood(m);
+      api.get(`/stats/mood/${councilId}`).then(r => setMood(r.data)).catch(() => {});
+    } catch {} finally { setSaving(false); }
+  };
+
+  const pct = mood ? Math.min(Math.max((mood.average_score / 5) * 100, 0), 100) : 50;
+  const dominant = mood?.dominant_mood || 'normal';
+  const dInfo = MOOD_CFG[dominant] || MOOD_CFG.normal;
+
+  return (
+    <div className="glass rounded-xl p-4 mb-4" data-testid="council-mood-gauge">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-xs font-medium text-muted-foreground">Настроение совета</span>
+        {mood && <span className="text-xs font-bold" style={{ color: dInfo.color }}>{dInfo.name} ({mood.average_score?.toFixed(1)})</span>}
+      </div>
+      <div className="relative h-3 rounded-full overflow-hidden mb-2" style={{ background: 'linear-gradient(to right, #dc2626, #ef4444, #f97316, #f59e0b, #3b82f6, #10b981)' }}>
+        <div className="absolute top-0 h-full w-1 bg-white rounded shadow transition-all duration-700" style={{ left: `${pct}%` }} />
+      </div>
+      <div className="flex justify-between text-[8px] text-muted-foreground mb-3">
+        <span>Гнев</span><span>Стресс</span><span>Недов.</span><span>Расстр.</span><span>Норм.</span><span>Отл.</span>
+      </div>
+      {isMember && (
+        <div className="flex flex-wrap gap-1.5">
+          {Object.entries(MOOD_CFG).map(([k, v]) => (
+            <button key={k} onClick={() => setMoodValue(k)} disabled={saving} data-testid={`council-mood-${k}`}
+              className={`px-2 py-1 rounded-lg text-[10px] font-medium transition-all ${myMood === k ? 'text-white' : 'bg-secondary/30 text-muted-foreground'}`}
+              style={myMood === k ? { backgroundColor: v.color } : {}}>
+              {v.name}
+            </button>
+          ))}
+        </div>
+      )}
+      {mood?.total_votes > 0 && <p className="text-[9px] text-muted-foreground mt-2">{mood.total_votes} голосов</p>}
     </div>
   );
 }
@@ -628,6 +692,9 @@ export default function CouncilsPage() {
               ))}
             </div>
           </div>
+
+          {/* Council Mood */}
+          <CouncilMoodGauge councilId={selected.council_id} isMember={isMember} />
 
           {/* Tabs */}
           <div className="flex gap-1 glass rounded-xl p-1 mb-4 overflow-x-auto">

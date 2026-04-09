@@ -24,6 +24,8 @@ import PrivacyPage from './pages/PrivacyPage';
 import VerifyFeedPage from './pages/VerifyFeedPage';
 import GovOfficialsPage from './pages/GovOfficialsPage';
 import CouncilsPage from './pages/CouncilsPage';
+import StatsPage from './pages/StatsPage';
+import PublicOrgPage from './pages/PublicOrgPage';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children }) {
@@ -64,6 +66,8 @@ function AppRouter() {
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/terms" element={<TermsPage />} />
       <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/stats" element={<StatsPage />} />
+      <Route path="/org/:orgId" element={<PublicOrgPage />} />
       <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
       <Route path="/create" element={<ProtectedRoute><CreateReviewPage /></ProtectedRoute>} />
       <Route path="/map" element={<ProtectedRoute><MapPage /></ProtectedRoute>} />

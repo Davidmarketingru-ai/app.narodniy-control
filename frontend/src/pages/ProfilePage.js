@@ -3,11 +3,13 @@ import { motion } from 'framer-motion';
 import { 
   User, Shield, Award, Settings, LogOut, Sun, Moon, ChevronRight,
   Copy, Check, Sprout, Eye, ShieldCheck, Crown, Star, Flame,
-  Users, Gift, Loader2, Home
+  Users, Gift, Loader2, Home, Bell, BellOff, SmilePlus
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { profileApi, ratingApi, referralApi } from '../lib/api';
+import api from '../lib/api';
+import { subscribeToPush, unsubscribeFromPush, isPushSubscribed, isPushSupported } from '../lib/push';
 import { useNavigate, Link } from 'react-router-dom';
 
 const statusIcons = {
@@ -67,6 +69,96 @@ function AddressForm({ user, onSave }) {
           {saving ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Сохранить'}
         </button>
         <button onClick={() => setEditing(false)} className="px-4 py-2 glass rounded-lg text-sm text-muted-foreground">Отмена</button>
+      </div>
+    </div>
+  );
+}
+
+const MOODS = [
+  { key: 'excellent', label: 'Отличное', color: '#10b981' },
+  { key: 'normal', label: 'Нормальное', color: '#3b82f6' },
+  { key: 'mild_upset', label: 'Расстройство', color: '#f59e0b' },
+  { key: 'dissatisfaction', label: 'Недовольство', color: '#f97316' },
+  { key: 'stress', label: 'Стресс', color: '#ef4444' },
+  { key: 'anger', label: 'Гнев', color: '#dc2626' },
+];
+
+function PushNotificationToggle() {
+  const [subscribed, setSubscribed] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const supported = isPushSupported();
+
+  useEffect(() => {
+    isPushSubscribed().then(setSubscribed);
+  }, []);
+
+  const toggle = async () => {
+    setToggling(true);
+    try {
+      if (subscribed) {
+        await unsubscribeFromPush();
+        setSubscribed(false);
+      } else {
+        const ok = await subscribeToPush();
+        setSubscribed(ok);
+      }
+    } catch {} finally { setToggling(false); }
+  };
+
+  if (!supported) return null;
+
+  return (
+    <div className="glass rounded-xl p-6 mb-6" data-testid="push-toggle-card">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {subscribed ? <Bell className="w-5 h-5 text-primary" /> : <BellOff className="w-5 h-5 text-muted-foreground" />}
+          <div>
+            <span className="font-medium text-foreground">Push-уведомления</span>
+            <p className="text-[10px] text-muted-foreground">Получайте уведомления о событиях в советах</p>
+          </div>
+        </div>
+        <button onClick={toggle} disabled={toggling} data-testid="push-toggle-btn"
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${subscribed ? 'bg-primary text-primary-foreground' : 'bg-secondary text-foreground hover:bg-secondary/80'}`}>
+          {toggling ? <Loader2 className="w-4 h-4 animate-spin" /> : subscribed ? 'Включены' : 'Включить'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MoodSelector() {
+  const [current, setCurrent] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.get('/mood').then(r => {
+      const global = r.data?.find(m => m.council_id === '__global__');
+      if (global) setCurrent(global.mood);
+    }).catch(() => {});
+  }, []);
+
+  const setMood = async (mood) => {
+    setSaving(true);
+    try {
+      await api.post('/mood', { mood });
+      setCurrent(mood);
+    } catch {} finally { setSaving(false); }
+  };
+
+  return (
+    <div className="glass rounded-xl p-6 mb-6" data-testid="mood-selector-card">
+      <h3 className="font-semibold text-foreground mb-1 flex items-center gap-2">
+        <SmilePlus className="w-5 h-5 text-primary" /> Ваше настроение
+      </h3>
+      <p className="text-[10px] text-muted-foreground mb-3">Влияет на общую шкалу настроения граждан</p>
+      <div className="grid grid-cols-3 gap-2">
+        {MOODS.map(m => (
+          <button key={m.key} onClick={() => setMood(m.key)} disabled={saving} data-testid={`mood-${m.key}`}
+            className={`p-2.5 rounded-xl text-xs font-medium transition-all border-2 ${current === m.key ? 'border-current' : 'border-transparent bg-secondary/30'}`}
+            style={current === m.key ? { borderColor: m.color, backgroundColor: m.color + '20', color: m.color } : {}}>
+            {m.label}
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -403,6 +495,12 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* Push Notifications */}
+        <PushNotificationToggle />
+
+        {/* Mood Selector */}
+        <MoodSelector />
 
         {/* Logout */}
         <button

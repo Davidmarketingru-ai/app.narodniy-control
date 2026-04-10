@@ -26,6 +26,7 @@ import GovOfficialsPage from './pages/GovOfficialsPage';
 import CouncilsPage from './pages/CouncilsPage';
 import StatsPage from './pages/StatsPage';
 import PublicOrgPage from './pages/PublicOrgPage';
+import DistrictChatPage from './pages/DistrictChatPage';
 import { Loader2 } from 'lucide-react';
 
 function ProtectedRoute({ children }) {
@@ -84,6 +85,7 @@ function AppRouter() {
       <Route path="/verify" element={<ProtectedRoute><VerifyFeedPage /></ProtectedRoute>} />
       <Route path="/gov" element={<ProtectedRoute><GovOfficialsPage /></ProtectedRoute>} />
       <Route path="/councils" element={<ProtectedRoute><CouncilsPage /></ProtectedRoute>} />
+      <Route path="/district-chat" element={<ProtectedRoute><DistrictChatPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

@@ -1253,6 +1253,154 @@ async def delete_telegram_staff(request: Request, staff_id: str):
     await db.telegram_staff.delete_one({"staff_id": staff_id})
     return {"success": True}
 
+# ==================== District Chats (Geo-fenced) ====================
+@api_router.get("/chats/district")
+async def get_district_chats(request: Request):
+    user = await require_user(request)
+    district = user.get("district", "")
+    if not district:
+        return []
+    msgs = await db.district_chats.find(
+        {"district": {"$regex": f"^{district}$", "$options": "i"}},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    msgs.reverse()
+    return msgs
+
+@api_router.post("/chats/district")
+async def post_district_message(request: Request):
+    user = await require_user(request)
+    district = user.get("district", "")
+    if not district:
+        raise HTTPException(status_code=400, detail="Укажите район в профиле")
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text or len(text) < 2:
+        raise HTTPException(status_code=400, detail="Минимум 2 символа")
+    if len(text) > 1000:
+        raise HTTPException(status_code=400, detail="Максимум 1000 символов")
+    msg_id = f"dchat_{uuid.uuid4().hex[:10]}"
+    now = datetime.now(timezone.utc).isoformat()
+    msg = {
+        "message_id": msg_id,
+        "user_id": user["user_id"],
+        "user_name": user.get("name", "Аноним"),
+        "district": district,
+        "text": text,
+        "created_at": now,
+    }
+    await db.district_chats.insert_one(msg)
+    del msg["_id"]
+    return msg
+
+# ==================== Streak System ====================
+STREAK_REWARDS = {
+    3: {"points": 10, "badge": "3-day streak"},
+    7: {"points": 30, "badge": "7-day streak"},
+    14: {"points": 75, "badge": "14-day streak"},
+    30: {"points": 200, "badge": "30-day streak"},
+    60: {"points": 500, "badge": "60-day streak"},
+    100: {"points": 1000, "badge": "100-day streak"},
+}
+
+@api_router.post("/streak/checkin")
+async def streak_checkin(request: Request):
+    user = await require_user(request)
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    streak = await db.streaks.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    reward = None
+    if not streak:
+        streak = {"user_id": user["user_id"], "current": 1, "max": 1, "last_date": today, "history": [today]}
+        await db.streaks.insert_one(streak)
+    else:
+        last = streak.get("last_date", "")
+        if last == today:
+            return {"streak": streak.get("current", 0), "max": streak.get("max", 0), "already_checked": True, "reward": None}
+        from datetime import timedelta
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+        if last == yesterday:
+            new_current = streak.get("current", 0) + 1
+        else:
+            new_current = 1
+        new_max = max(new_current, streak.get("max", 0))
+        history = streak.get("history", [])
+        history.append(today)
+        if len(history) > 100:
+            history = history[-100:]
+        await db.streaks.update_one(
+            {"user_id": user["user_id"]},
+            {"$set": {"current": new_current, "max": new_max, "last_date": today, "history": history}}
+        )
+        streak["current"] = new_current
+        streak["max"] = new_max
+        # Check rewards
+        if new_current in STREAK_REWARDS:
+            reward = STREAK_REWARDS[new_current]
+            await db.users.update_one({"user_id": user["user_id"]}, {"$inc": {"points": reward["points"]}})
+    return {"streak": streak.get("current", 0), "max": streak.get("max", 0), "already_checked": False, "reward": reward}
+
+@api_router.get("/streak")
+async def get_streak(request: Request):
+    user = await require_user(request)
+    streak = await db.streaks.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if not streak:
+        return {"current": 0, "max": 0, "last_date": None, "history": []}
+    return {"current": streak.get("current", 0), "max": streak.get("max", 0), "last_date": streak.get("last_date"), "history": streak.get("history", [])[-30:]}
+
+# ==================== Organization Responses ====================
+@api_router.post("/org/{org_id}/respond/{review_id}")
+async def org_respond_to_review(request: Request, org_id: str, review_id: str):
+    user = await require_user(request)
+    # Check user is org_manager for this org or admin
+    is_admin = user.get("role") == "admin"
+    is_manager = user.get("role") == "org_manager" and user.get("managed_org_id") == org_id
+    if not is_admin and not is_manager:
+        raise HTTPException(status_code=403, detail="Только менеджер организации или админ")
+    body = await request.json()
+    text = body.get("text", "").strip()
+    if not text or len(text) < 5:
+        raise HTTPException(status_code=400, detail="Минимум 5 символов")
+    review = await db.reviews.find_one({"review_id": review_id, "org_id": org_id})
+    if not review:
+        raise HTTPException(status_code=404, detail="Отзыв не найден")
+    resp_id = f"resp_{uuid.uuid4().hex[:8]}"
+    now = datetime.now(timezone.utc).isoformat()
+    response_doc = {
+        "response_id": resp_id,
+        "review_id": review_id,
+        "org_id": org_id,
+        "responder_id": user["user_id"],
+        "responder_name": user.get("name", ""),
+        "text": text,
+        "created_at": now,
+    }
+    await db.org_responses.insert_one(response_doc)
+    await db.reviews.update_one({"review_id": review_id}, {"$set": {"has_org_response": True}})
+    del response_doc["_id"]
+    return response_doc
+
+@api_router.get("/org/{org_id}/responses")
+async def get_org_responses(org_id: str):
+    responses = await db.org_responses.find({"org_id": org_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return responses
+
+@api_router.get("/reviews/{review_id}/response")
+async def get_review_response(review_id: str):
+    resp = await db.org_responses.find_one({"review_id": review_id}, {"_id": 0})
+    return resp or {}
+
+# Admin: Set user as org manager
+@api_router.post("/admin/org-manager")
+async def set_org_manager(request: Request):
+    await require_admin(request)
+    body = await request.json()
+    user_id = body.get("user_id")
+    org_id = body.get("org_id")
+    if not user_id or not org_id:
+        raise HTTPException(status_code=400, detail="user_id и org_id обязательны")
+    await db.users.update_one({"user_id": user_id}, {"$set": {"role": "org_manager", "managed_org_id": org_id}})
+    return {"success": True}
+
 # ==================== Review Expiry Background Task ====================
 async def expire_reviews_task():
     """Background task that marks expired pending reviews"""
@@ -2414,6 +2562,61 @@ async def root():
 @api_router.get("/health")
 async def health():
     return {"status": "ok"}
+
+# ==================== Telegram Bot Webhook & Linking ====================
+from telegram_bot import handle_update, setup_webhook, notify_user, notify_council_members
+
+_tg_webhook_secret = None
+
+@api_router.post("/telegram/webhook/{secret}")
+async def telegram_webhook(request: Request, secret: str):
+    global _tg_webhook_secret
+    if not _tg_webhook_secret or secret != _tg_webhook_secret:
+        raise HTTPException(status_code=403, detail="Invalid secret")
+    data = await request.json()
+    asyncio.create_task(handle_update(data, db))
+    return {"ok": True}
+
+@api_router.post("/telegram/link")
+async def create_telegram_link(request: Request):
+    user = await require_user(request)
+    code = uuid.uuid4().hex[:8].upper()
+    await db.telegram_links.insert_one({
+        "code": code,
+        "user_id": user["user_id"],
+        "used": False,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+    bot_username = os.environ.get("TELEGRAM_BOT_USERNAME", "")
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    # Try to get bot username from token
+    deep_link = f"https://t.me/bot?start={code}"
+    if bot_token:
+        try:
+            from telegram_bot import bot as tg_bot
+            if tg_bot:
+                me = await tg_bot.get_me()
+                deep_link = f"https://t.me/{me.username}?start={code}"
+                bot_username = me.username
+        except Exception:
+            pass
+    return {"code": code, "deep_link": deep_link, "bot_username": bot_username}
+
+@api_router.get("/telegram/status")
+async def telegram_link_status(request: Request):
+    user = await require_user(request)
+    tg = await db.telegram_users.find_one({"app_user_id": user["user_id"]}, {"_id": 0, "chat_id": 1, "tg_username": 1, "tg_first_name": 1, "linked_at": 1})
+    return {"linked": bool(tg), "telegram_info": tg}
+
+@app.on_event("startup")
+async def startup_telegram():
+    global _tg_webhook_secret
+    bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if bot_token:
+        base_url = os.environ.get("CORS_ORIGINS", "").split(",")[0].strip() if os.environ.get("CORS_ORIGINS") else ""
+        if base_url:
+            _tg_webhook_secret = await setup_webhook(base_url)
+            logger.info(f"Telegram bot webhook configured")
 
 app.include_router(api_router)
 

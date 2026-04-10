@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { 
   User, Shield, Award, Settings, LogOut, Sun, Moon, ChevronRight,
   Copy, Check, Sprout, Eye, ShieldCheck, Crown, Star, Flame,
-  Users, Gift, Loader2, Home, Bell, BellOff, SmilePlus
+  Users, Gift, Loader2, Home, Bell, BellOff, SmilePlus, Send, Zap, Calendar
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -82,6 +82,104 @@ const MOODS = [
   { key: 'stress', label: 'Стресс', color: '#ef4444' },
   { key: 'anger', label: 'Гнев', color: '#dc2626' },
 ];
+
+function TelegramLink() {
+  const [status, setStatus] = useState(null);
+  const [linkData, setLinkData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get('/telegram/status').then(r => setStatus(r.data)).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  const handleLink = async () => {
+    try {
+      const data = await api.post('/telegram/link').then(r => r.data);
+      setLinkData(data);
+    } catch {}
+  };
+
+  if (loading) return null;
+
+  return (
+    <div className="glass rounded-xl p-6 mb-6" data-testid="telegram-link-card">
+      <h3 className="font-semibold text-foreground mb-1 flex items-center gap-2">
+        <Send className="w-5 h-5 text-[#2AABEE]" /> Telegram
+      </h3>
+      {status?.linked ? (
+        <div>
+          <p className="text-sm text-green-400">Привязан: @{status.telegram_info?.tg_username || status.telegram_info?.tg_first_name}</p>
+          <p className="text-[10px] text-muted-foreground mt-1">Уведомления приходят в Telegram</p>
+        </div>
+      ) : linkData ? (
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">Нажмите кнопку или отправьте код боту:</p>
+          <div className="flex items-center gap-2 mb-2">
+            <code className="bg-secondary/50 px-3 py-1.5 rounded-lg text-sm font-mono text-foreground">{linkData.code}</code>
+          </div>
+          <a href={linkData.deep_link} target="_blank" rel="noopener noreferrer"
+            className="inline-block bg-[#2AABEE] text-white px-4 py-2 rounded-lg text-sm font-medium">
+            Открыть бота
+          </a>
+        </div>
+      ) : (
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">Получайте уведомления о событиях в Telegram</p>
+          <button onClick={handleLink} data-testid="telegram-link-btn"
+            className="text-xs px-3 py-1.5 rounded-lg bg-[#2AABEE]/10 text-[#2AABEE] hover:bg-[#2AABEE]/20">
+            Привязать Telegram
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StreakCard() {
+  const [streak, setStreak] = useState(null);
+  const [reward, setReward] = useState(null);
+
+  useEffect(() => {
+    // Auto checkin on page load
+    api.post('/streak/checkin').then(r => {
+      setStreak(r.data);
+      if (r.data.reward) setReward(r.data.reward);
+    }).catch(() => {
+      api.get('/streak').then(r => setStreak(r.data)).catch(() => {});
+    });
+  }, []);
+
+  if (!streak) return null;
+
+  const milestones = [3, 7, 14, 30, 60, 100];
+
+  return (
+    <div className="glass rounded-xl p-6 mb-6" data-testid="streak-card">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-semibold text-foreground flex items-center gap-2">
+          <Zap className="w-5 h-5 text-yellow-400" /> Серия дней
+        </h3>
+        <div className="flex items-center gap-1">
+          <Flame className="w-4 h-4 text-orange-400" />
+          <span className="text-lg font-bold text-foreground">{streak.current || 0}</span>
+        </div>
+      </div>
+      {reward && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3 mb-3 text-center" data-testid="streak-reward">
+          <p className="text-sm font-medium text-yellow-400">+{reward.points} очков за серию!</p>
+        </div>
+      )}
+      <div className="flex gap-1">
+        {milestones.map(m => (
+          <div key={m} className={`flex-1 text-center py-1.5 rounded-lg text-[10px] font-medium ${(streak.current || 0) >= m ? 'bg-yellow-500/20 text-yellow-400' : 'bg-secondary/30 text-muted-foreground'}`}>
+            {m}д
+          </div>
+        ))}
+      </div>
+      {streak.max > 0 && <p className="text-[10px] text-muted-foreground mt-2 flex items-center gap-1"><Calendar className="w-3 h-3" /> Рекорд: {streak.max} дней</p>}
+    </div>
+  );
+}
 
 function PushNotificationToggle() {
   const [subscribed, setSubscribed] = useState(false);
@@ -495,6 +593,12 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+
+        {/* Telegram Link */}
+        <TelegramLink />
+
+        {/* Streak */}
+        <StreakCard />
 
         {/* Push Notifications */}
         <PushNotificationToggle />

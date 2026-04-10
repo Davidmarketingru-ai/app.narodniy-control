@@ -85,7 +85,7 @@ export default function DistrictChatPage() {
         <div ref={endRef} />
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 pb-20">
         <input type="text" value={text} onChange={e => setText(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
           placeholder="Сообщение..." maxLength={1000}
